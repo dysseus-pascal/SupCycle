@@ -1,0 +1,74 @@
+{
+  "name": "kurintervall",
+  "author": "dysseus-pascal",
+  "version": "0.1.0",
+  "license": "CC0-1.0",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "dependencies": {
+    "@rebble/clay": "^1.1.0"
+  },
+  "pebble": {
+    "displayName": "Kurintervall",
+    "uuid": "33ce868a-2beb-4335-9421-4d741ed16eb3",
+    "sdkVersion": "3",
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "emery",
+      "flint",
+      "gabbro"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "capabilities": [
+      "configurable"
+    ],
+    "messageKeys": [
+      "REQUEST",
+      "PLAN",
+      "LANG",
+      "NAME1",
+      "MODE1",
+      "TIME1",
+      "ON1",
+      "OFF1",
+      "SINCE1",
+      "NAME2",
+      "MODE2",
+      "TIME2",
+      "ON2",
+      "OFF2",
+      "SINCE2",
+      "NAME3",
+      "MODE3",
+      "TIME3",
+      "ON3",
+      "OFF3",
+      "SINCE3",
+      "NAME4",
+      "MODE4",
+      "TIME4",
+      "ON4",
+      "OFF4",
+      "SINCE4",
+      "NAME5",
+      "MODE5",
+      "TIME5",
+      "ON5",
+      "OFF5",
+      "SINCE5",
+      "NAME6",
+      "MODE6",
+      "TIME6",
+      "ON6",
+      "OFF6",
+      "SINCE6"
+    ],
+    "resources": {
+      "media": []
+    }
+  }
+}
