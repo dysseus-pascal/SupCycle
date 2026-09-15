@@ -60,7 +60,7 @@ void remind_schedule(time_t snooze_at) {
       int best = -1;
       for (int i = 0; i < SC_MAX_ITEMS; i++) {
         const PlanItem *it = plan_item(i);
-        if (!it || it->mode == PlanUnused) continue;
+        if (!it || !it->used) continue;
         // Nur woran an DIESEM Tag ueberhaupt zu erinnern ist. In der Pause
         // schweigt die Uhr - sonst hakt man aus Gewohnheit ab, und der Zyklus
         // ist wertlos.

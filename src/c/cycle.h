@@ -38,3 +38,12 @@ CycleState cycle_state(int32_t anchor_day, int32_t today, int weeks_on, int week
 
 // Nimmt man das Präparat heute?
 bool cycle_active_today(int32_t anchor_day, int32_t today, int weeks_on, int weeks_off);
+
+// Fällt HEUTE auf das Einnahmeraster "alle `every` Tage"?
+//
+// Gezählt wird ab dem Ankertag: every = 1 heisst jeden Tag, every = 3 heisst
+// Ankertag, Ankertag+3, +6 und so fort. every < 1 wird als 1 gelesen - ein
+// Raster von null Tagen gibt es nicht, und ein Absturz dafür erst recht nicht.
+//
+// Liegt `today` vor dem Anker, gilt wie bei cycle_state der Anker selbst.
+bool cycle_day_hits(int32_t anchor_day, int32_t today, int every);

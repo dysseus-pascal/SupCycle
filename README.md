@@ -40,6 +40,13 @@ liefe die Auswahl unten hinaus und man wählte blind weiter.
 Die kleine Uhrzeit über der Liste ist weg: die Timeline-LISTE hat keine, nur
 das Pin-Detail. Die sechzehn Pixel gehören dem ersten Eintrag.
 
+Alles steht in **reinem Schwarz**, auch die Untertitel. Grau (85,85,85) sah auf
+dem Emulator ordentlich aus und wusch auf der echten Uhr aus — das Display
+leuchtet nicht, es spiegelt. Nachgemessen ist in der Systemtimeline auch der
+Untertitel reines Schwarz; die Staffelung kommt dort allein aus der
+Schriftgrösse. Grau bleibt einer einzigen Sache vorbehalten: dem abgehakten
+Eintrag, der zurücktreten soll.
+
 In der Zyklusansicht richtet sich die Schriftgrösse nach dem Platz: solange
 ALLE Präparate gross hineinpassen, stehen sie gross da, sonst eine Nummer
 kleiner. Nach einer geratenen Anzahl zu schalten hiess, das letzte gross
@@ -84,8 +91,26 @@ Der Stand steht auch im App-Glance des Starters.
 ## Der Plan
 
 Alles wird auf der **Konfigseite der Telefon-App** eingetragen — sechs Plätze,
-je mit Name, Uhrzeit, Rhythmus (täglich oder zyklisch), Wochen Einnahme, Wochen
-Pause und „Zyklus läuft seit". Ein Platz ohne Namen bleibt leer.
+je mit Name, Uhrzeit, dem Rhythmus und „Zyklus läuft seit". Ein Platz ohne
+Namen bleibt leer.
+
+Der Rhythmus sind drei Zahlen: **alle X Tage**, **für Y Wochen**, **Z Wochen
+Pause**.
+
+- X = 1 heisst täglich. X = 3 heisst jeden dritten Tag, ab dem Ankertag gezählt.
+- **Y leer heisst unbegrenzt** — dann gibt es weder Kur noch Pause.
+- Z zählt nur, wenn Y gesetzt ist. Eine Pause ohne Einnahmewochen wäre eine
+  Angabe über etwas, das nicht stattfindet, und wird verworfen.
+
+Eine eigene Auswahl „täglich oder zyklisch" gibt es nicht mehr. Sie stellte
+eine Frage, deren Antwort in den Feldern darunter noch einmal stand — und zwei
+Stellen für dieselbe Aussage können sich widersprechen. Jetzt ergibt sich der
+Rhythmus aus dem, was eingetragen ist.
+
+Ein Eintrag misst damit 26 statt 25 Byte. Die Uhr liest **beide Längen**: sonst
+stünde nach einer Aktualisierung „Noch kein Plan" da, bis jemand die
+Einstellungen öffnet. Aus dem alten Modus wird dabei das neue Schema — täglich
+hiess dort „keine Pause", also Y = leer.
 
 Ganz oben steht, **wie viele Präparate** es sind — nur so viele Plätze zeigt die
 Seite. Ohne diese Vorwahl stünden dort immer sechs Abschnitte, von denen die
@@ -173,6 +198,9 @@ einem Zyklus, der über Nacht in die Pause gewechselt ist.
 
 Pilly folgt dem Glas aus Drinktervall: dasselbe Strichbild, dasselbe Aufploppen
 mit Überschwingen, derselbe Strahlenkranz zum Schluss.
+Das Gesicht ist gegenüber der ersten Fassung um gut ein Drittel gewachsen,
+gestreckt um seine eigene Mitte und nicht um die der Kapsel — sonst wäre der
+Seitenblick mitgewandert.
 
 Dazwischen wird sie **geschüttelt** und verzieht das Gesicht: die Augen kneifen
 sich zu `><` zusammen, der Mund wird zum Zickzack. Danach ist es ausgestanden,

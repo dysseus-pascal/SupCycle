@@ -102,9 +102,13 @@ typedef enum { FaceSmile, FaceShaken } Face;
 // Auf Rot statt auf Weiss: jeder Strich wird erst mit weissem Saum und dann
 // schwarz gezogen (prv_pen), er hebt sich also auch dort ab. Und oben sitzt
 // das Gesicht dort, wo man bei einem Gegenüber hinsieht.
+// Die Maße unten sind gegenüber der ersten Fassung um gut ein Drittel
+// gewachsen, gestreckt um die Mitte des Gesichts (x = -3), nicht um die der
+// Kapsel: sonst wäre der Seitenblick mitgewandert. Nach oben ist Luft bis
+// y = -52, dort misst der Stadion-Umriss noch 34 Pixel halbe Breite.
 static void prv_face(GContext *ctx, Face face) {
   const int32_t fy = -40;                     // Mitte der oberen Hälfte
-  const int32_t eyes[2] = { -13, 7 };
+  const int32_t eyes[2] = { -17, 10 };
 
   for (int i = 0; i < 2; i++) {
     const int32_t x = eyes[i];
@@ -113,13 +117,13 @@ static void prv_face(GContext *ctx, Face face) {
       // Die Spitzen zeigen zueinander — so liest sich das Paar als "><".
       const int32_t dir = (i == 0) ? 1 : -1;
       GPoint eye[3] = {
-        prv_gp(x - 4 * dir, fy - 9),
-        prv_gp(x + 3 * dir, fy - 5),
-        prv_gp(x - 4 * dir, fy - 1),
+        prv_gp(x - 5 * dir, fy - 12),
+        prv_gp(x + 4 * dir, fy - 7),
+        prv_gp(x - 5 * dir, fy - 1),
       };
       prv_polyline(ctx, eye, 3);
     } else {
-      prv_line(ctx, prv_gp(x, fy - 9), prv_gp(x, fy - 2));
+      prv_line(ctx, prv_gp(x, fy - 12), prv_gp(x, fy - 3));
     }
   }
 
@@ -127,12 +131,12 @@ static void prv_face(GContext *ctx, Face face) {
     // Gezackter Mund: fünf Punkte auf und ab. Der Knick allein sagt schon
     // "unangenehm", die Zacken machen daraus ein Zähneknirschen.
     GPoint mouth[5] = {
-      prv_gp(-14, fy + 9), prv_gp(-8, fy + 4), prv_gp(-3, fy + 11),
-      prv_gp(3, fy + 4), prv_gp(9, fy + 9),
+      prv_gp(-18, fy + 12), prv_gp(-10, fy + 5), prv_gp(-3, fy + 15),
+      prv_gp(5, fy + 5), prv_gp(13, fy + 12),
     };
     prv_polyline(ctx, mouth, 5);
   } else {
-    GPoint mouth[3] = { prv_gp(-14, fy + 6), prv_gp(-3, fy + 12), prv_gp(8, fy + 6) };
+    GPoint mouth[3] = { prv_gp(-18, fy + 8), prv_gp(-3, fy + 16), prv_gp(12, fy + 8) };
     prv_polyline(ctx, mouth, 3);
   }
 }

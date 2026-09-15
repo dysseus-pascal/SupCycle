@@ -15,12 +15,14 @@ var clayConfig = require('./config');
 
 var SLOTS = clayConfig.SLOTS || 6;
 var NAME_BYTES = 16;        // muss zu SC_NAME_LEN in src/c/plan.h passen
-var ITEM_BYTES = 25;        // muss zu SC_ITEM_BYTES passen
+var ITEM_BYTES = 26;        // muss zu SC_ITEM_BYTES passen
 var PLAN_KEY = 'supcycle_plan';
 var ITEMS_KEY = 'supcycle_items';
 var LANG_KEY = 'supcycle_lang';
 
-var MODE_UNUSED = 0, MODE_DAILY = 1, MODE_CYCLIC = 2;
+// Ein leerer Platz steht mit 0 im Byte 18. Frueher sagte dort ein Modus,
+// ob taeglich oder zyklisch - das ergibt sich jetzt aus den Wochen.
+var SLOT_UNUSED = 0, SLOT_USED = 1;
 
 // --- Timeline ---
 // Wie in Drinktervall: zuerst die Rebble-REST-Schnittstelle mit dem Token der
@@ -127,11 +129,11 @@ function buildPlan(dict) {
   for (var i = 1; i <= SLOTS; i++) {
     var name = i <= count && dict['NAME' + i] !== undefined
       ? String(dict['NAME' + i].value || '').trim() : '';
-    var mode = i <= count ? num(dict, 'MODE' + i, MODE_UNUSED) : MODE_UNUSED;
-    if (!name || mode === MODE_UNUSED) {
-      // Leerer Platz: trotzdem 25 Byte, damit die Reihenfolge stimmt. Die Uhr
-      // erkennt ihn am Modus 0.
-      bytes = bytes.concat(nameBytes(''), [0, 0, MODE_UNUSED, 0, 0], int32le(0));
+    if (!name) {
+      // Leerer Platz: trotzdem 26 Byte, damit die Reihenfolge stimmt. Die Uhr
+      // erkennt ihn am Nullbyte. Ein Platz OHNE NAMEN ist der leere Platz -
+      // das ist die einzige Frage, die der Benutzer dafuer beantworten muss.
+      bytes = bytes.concat(nameBytes(''), [0, 0, SLOT_UNUSED, 0, 0, 0], int32le(0));
       items.push(null);
       continue;
     }
@@ -140,17 +142,23 @@ function buildPlan(dict) {
     var minutes = num(dict, 'TIME' + i, 480);
     if (minutes < 0 || minutes > 23 * 60 + 59) minutes = 480;
 
-    var on = num(dict, 'ON' + i, 8);
-    var off = num(dict, 'OFF' + i, 2);
-    if (on < 1) on = 1;
-    if (on > 26) on = 26;
-    if (off < 1) off = 1;
-    if (off > 12) off = 12;
+    // Alle X Tage. Leer oder Unsinn heisst taeglich.
+    var every = num(dict, 'EVERY' + i, 1);
+    if (!(every >= 1)) every = 1;
+    if (every > 30) every = 30;
 
-    // Bei einem täglichen Präparat gibt es keine Pause. Die Uhr rechnet das
-    // zwar auch so, aber ein weeks_off im Block wäre eine Behauptung, die
-    // nirgends gilt.
-    if (mode === MODE_DAILY) off = 0;
+    // Wochen Einnahme: LEER heisst unbegrenzt, und unbegrenzt heisst 0.
+    // Deshalb hier kein Standardwert - ein voreingestelltes '8' machte aus
+    // jedem Praeparat ungefragt eine Kur.
+    var on = num(dict, 'ON' + i, 0);
+    if (!(on >= 1)) on = 0;
+    if (on > 52) on = 52;
+
+    // Pause nur, wenn es ueberhaupt einen Zyklus gibt. Ohne Einnahmewochen
+    // waere eine Pause eine Angabe ueber etwas, das nicht stattfindet.
+    var off = on === 0 ? 0 : num(dict, 'OFF' + i, 0);
+    if (!(off >= 1)) off = 0;
+    if (off > 52) off = 52;
 
     // Anker: der Tag, an dem Woche 1 begann. "Zyklus läuft seit N Wochen"
     // schiebt ihn entsprechend zurück, damit die Uhr sofort die richtige
@@ -161,10 +169,13 @@ function buildPlan(dict) {
 
     bytes = bytes.concat(
       nameBytes(name),
-      [minutes / 60 | 0, minutes % 60, mode, on, off],
+      [minutes / 60 | 0, minutes % 60, SLOT_USED, every, on, off],
       int32le(anchor)
     );
-    items.push({ name: name, hour: minutes / 60 | 0, minute: minutes % 60 });
+    items.push({
+      name: name, hour: minutes / 60 | 0, minute: minutes % 60,
+      every: every, on: on, off: off, anchor: anchor
+    });
   }
 
   if (bytes.length !== SLOTS * ITEM_BYTES) {

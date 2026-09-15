@@ -24,12 +24,12 @@ var TEXT = [
     name: 'Name',
     namePlaceholder: 'z. B. Multivitamin',
     time: 'Wann',
-    mode: 'Rhythmus',
-    modeOff: 'nicht benutzt',
-    modeDaily: 'täglich',
-    modeCyclic: 'zyklisch',
+    every: 'Alle wie viel Tage',
+    everyHint: '1 = täglich',
     weeksOn: 'Wochen Einnahme',
+    weeksOnHint: 'leer = unbegrenzt',
     weeksOff: 'Wochen Pause',
+    weeksOffHint: 'leer = keine',
     since: 'Zyklus läuft seit',
     sinceNow: 'beginnt heute',
     sinceWeeks: function (n) { return n === 1 ? 'einer Woche' : n + ' Wochen'; },
@@ -46,12 +46,12 @@ var TEXT = [
     name: 'Name',
     namePlaceholder: 'e.g. multivitamin',
     time: 'When',
-    mode: 'Rhythm',
-    modeOff: 'unused',
-    modeDaily: 'daily',
-    modeCyclic: 'cyclic',
+    every: 'Every how many days',
+    everyHint: '1 = daily',
     weeksOn: 'Weeks on',
+    weeksOnHint: 'empty = unlimited',
     weeksOff: 'Weeks off',
+    weeksOffHint: 'empty = none',
     since: 'Cycle running for',
     sinceNow: 'starts today',
     sinceWeeks: function (n) { return n === 1 ? 'one week' : n + ' weeks'; },
@@ -101,35 +101,35 @@ function slotSection(t, i) {
       },
       {
         type: 'select',
-        messageKey: 'MODE' + n,
-        label: t.mode,
-        defaultValue: '0',
-        options: [
-          { label: t.modeOff, value: '0' },
-          { label: t.modeDaily, value: '1' },
-          { label: t.modeCyclic, value: '2' }
-        ]
-      },
-      {
-        type: 'select',
         messageKey: 'TIME' + n,
         label: t.time,
         defaultValue: '480',   // 08:00
         options: timeOptions()
       },
+      // Drei Zahlenfelder statt einer Rhythmus-Auswahl. Ob etwas zyklisch
+      // ist, steht damit nicht mehr als eigene Frage da - es ergibt sich
+      // daraus, ob Wochen eingetragen sind. Eine Auswahl, deren Antwort in
+      // den Feldern darunter noch einmal steht, kann widersprüchlich werden.
       {
-        type: 'select',
-        messageKey: 'ON' + n,
-        label: t.weeksOn,
-        defaultValue: '8',
-        options: numberOptions(1, 26)
+        type: 'input',
+        messageKey: 'EVERY' + n,
+        label: t.every,
+        description: t.everyHint,
+        attributes: { type: 'number', min: 1, max: 30, placeholder: '1' }
       },
       {
-        type: 'select',
+        type: 'input',
+        messageKey: 'ON' + n,
+        label: t.weeksOn,
+        description: t.weeksOnHint,
+        attributes: { type: 'number', min: 1, max: 52, placeholder: t.weeksOnHint }
+      },
+      {
+        type: 'input',
         messageKey: 'OFF' + n,
         label: t.weeksOff,
-        defaultValue: '2',
-        options: numberOptions(1, 12)
+        description: t.weeksOffHint,
+        attributes: { type: 'number', min: 1, max: 52, placeholder: t.weeksOffHint }
       },
       {
         type: 'select',

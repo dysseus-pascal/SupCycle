@@ -34,23 +34,27 @@ static void prv_roll_day(void) {
 // das bliebe der Schirm auf "Noch kein Plan" stehen.
 //
 // Zwei dauerhafte und zwei zyklische, die Zyklen bewusst in verschiedenen
-// Phasen: eines mitten in der Einnahme, eines in der Pause. Nur so sieht man
-// beim Fotografieren, ob beide Faelle richtig dargestellt werden.
+// Phasen: eines mitten in der Einnahme, eines in der Pause. Eines laeuft
+// zusaetzlich auf einem Zweitageraster. Nur so sieht man beim Fotografieren,
+// ob alle Faelle richtig dargestellt werden.
 static void prv_fake_plan(void) {
   const int32_t today = plan_today();
-  struct { const char *name; int h; int m; int mode; int on; int off; int since_days; }
+  struct { const char *name; int h; int m; int used; int every; int on; int off;
+           int since_days; }
   demo[] = {
-    { "Multivitamin", 8, 0,  PlanDaily,  0, 0,  0 },
-    { "Kreatin",      8, 0,  PlanDaily,  0, 0,  0 },
-    { "Black Maca",  12, 30, PlanCyclic, 8, 2, 16 },   // Woche 3 der Einnahme
-    { "Ashwagandha", 20, 0,  PlanCyclic, 6, 2, 45 },   // in der Pause
+    //  Name          Std Min  benutzt every on off  Anker
+    { "Multivitamin", 8, 0,  1, 1, 0, 0,  0 },   // täglich, unbegrenzt
+    { "Kreatin",      8, 0,  1, 1, 0, 0,  0 },   // täglich, unbegrenzt
+    { "Black Maca",  12, 30, 1, 1, 8, 2, 16 },   // Woche 3 der Einnahme
+    { "Ashwagandha", 20, 0,  1, 2, 6, 2, 45 },   // in der Pause, alle 2 Tage
   };
   memset(s_items, 0, sizeof(s_items));
   for (unsigned i = 0; i < sizeof(demo) / sizeof(demo[0]); i++) {
     strncpy(s_items[i].name, demo[i].name, SC_NAME_LEN - 1);
     s_items[i].hour = (uint8_t)demo[i].h;
     s_items[i].minute = (uint8_t)demo[i].m;
-    s_items[i].mode = (uint8_t)demo[i].mode;
+    s_items[i].used = (uint8_t)demo[i].used;
+    s_items[i].every = (uint8_t)demo[i].every;
     s_items[i].weeks_on = (uint8_t)demo[i].on;
     s_items[i].weeks_off = (uint8_t)demo[i].off;
     s_items[i].anchor_day = today - demo[i].since_days;
@@ -74,24 +78,49 @@ void plan_init(void) {
 
 // Ein Eintrag auf der Leitung: 16 Byte Name, dann Stunde, Minute, Modus,
 // Wochen an, Wochen aus, dann 4 Byte Ankertag (little endian).
+// Unsinn abfangen, statt ihn anzuzeigen. Die Telefonseite prüft schon, aber
+// ein verdorbener Persist-Wert käme hier sonst ungebremst durch.
+static void prv_sanitize(PlanItem *out) {
+  if (out->hour > 23) out->hour = 8;
+  if (out->minute > 59) out->minute = 0;
+  if (out->name[0] == 0) out->used = 0;
+  if (out->every < 1) out->every = 1;
+  // Ein Raster, das länger ist als der Zyklus selbst, träfe womöglich nie
+  // einen Einnahmetag. Dann ist die Eingabe falsch, nicht der Plan.
+  if (out->every > 30) out->every = 30;
+  if (out->weeks_on > 52) out->weeks_on = 52;
+  if (out->weeks_off > 52) out->weeks_off = 52;
+}
+
 static void prv_read_item(const uint8_t *p, PlanItem *out) {
   memcpy(out->name, p, SC_NAME_LEN);
   out->name[SC_NAME_LEN - 1] = 0;   // was auch kommt: die Zeichenkette endet
   out->hour = p[16];
   out->minute = p[17];
-  out->mode = p[18];
-  out->weeks_on = p[19];
-  out->weeks_off = p[20];
+  out->used = p[18] ? 1 : 0;
+  out->every = p[19];
+  out->weeks_on = p[20];
+  out->weeks_off = p[21];
+  out->anchor_day = (int32_t)((uint32_t)p[22] | ((uint32_t)p[23] << 8) |
+                              ((uint32_t)p[24] << 16) | ((uint32_t)p[25] << 24));
+  prv_sanitize(out);
+}
+
+// Ein Eintrag im alten 25-Byte-Format. Aus mode werden benutzt und die
+// Zyklusfelder: täglich hiess dort "keine Pause", also weeks_on = 0.
+static void prv_read_item_v1(const uint8_t *p, PlanItem *out) {
+  memcpy(out->name, p, SC_NAME_LEN);
+  out->name[SC_NAME_LEN - 1] = 0;
+  out->hour = p[16];
+  out->minute = p[17];
+  const uint8_t mode = p[18];
+  out->used = (mode == 1 || mode == 2) ? 1 : 0;
+  out->every = 1;
+  out->weeks_on = (mode == 2) ? p[19] : 0;
+  out->weeks_off = (mode == 2) ? p[20] : 0;
   out->anchor_day = (int32_t)((uint32_t)p[21] | ((uint32_t)p[22] << 8) |
                               ((uint32_t)p[23] << 16) | ((uint32_t)p[24] << 24));
-
-  // Unsinn abfangen, statt ihn anzuzeigen. Die Telefonseite prüft schon, aber
-  // ein verdorbener Persist-Wert käme hier sonst ungebremst durch.
-  if (out->mode > PlanCyclic) out->mode = PlanUnused;
-  if (out->hour > 23) out->hour = 8;
-  if (out->minute > 59) out->minute = 0;
-  if (out->name[0] == 0) out->mode = PlanUnused;
-  if (out->mode == PlanCyclic && out->weeks_on < 1) out->weeks_on = 1;
+  prv_sanitize(out);
 }
 
 bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
@@ -99,9 +128,18 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   PlanItem fresh[SC_MAX_ITEMS];
   memset(fresh, 0, sizeof(fresh));
 
-  const int n = len / SC_ITEM_BYTES;
+  // Welches Format? 156 (6x26) ist nicht durch 25 teilbar und 150 (6x25) nicht
+  // durch 26 - die Länge sagt es also eindeutig.
+  const uint16_t stride = (len % SC_ITEM_BYTES == 0) ? SC_ITEM_BYTES
+                        : (len % SC_ITEM_BYTES_V1 == 0) ? SC_ITEM_BYTES_V1 : 0;
+  if (stride == 0) {
+    APP_LOG(APP_LOG_LEVEL_WARNING, "Plan mit %u Byte passt in kein Format", len);
+    return false;
+  }
+  const int n = len / stride;
   for (int i = 0; i < n && i < SC_MAX_ITEMS; i++) {
-    prv_read_item(data + i * SC_ITEM_BYTES, &fresh[i]);
+    if (stride == SC_ITEM_BYTES) prv_read_item(data + i * stride, &fresh[i]);
+    else prv_read_item_v1(data + i * stride, &fresh[i]);
   }
 
   if (memcmp(fresh, s_items, sizeof(s_items)) == 0) return false;
@@ -114,7 +152,7 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
 int plan_count(void) {
   int n = 0;
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
-    if (s_items[i].mode != PlanUnused) n++;
+    if (s_items[i].used) n++;
   }
   return n;
 }
@@ -127,19 +165,19 @@ const PlanItem *plan_item(int index) {
 CycleState plan_cycle(int index) {
   CycleState s = { CyclePhaseOn, 1, 0, 0 };
   const PlanItem *it = plan_item(index);
-  if (!it || it->mode != PlanCyclic) return s;
+  // weeks_on == 0 heisst unbegrenzt: es GIBT keine Phase. Das sagt der
+  // Rückgabewert mit of_weeks == 0, und die Anzeige liest es daran ab.
+  if (!it || !it->used || it->weeks_on == 0) return s;
   return cycle_state(it->anchor_day, plan_today(), it->weeks_on, it->weeks_off);
 }
 
 bool plan_due_on(int index, int32_t day) {
   const PlanItem *it = plan_item(index);
-  if (!it) return false;
-  switch (it->mode) {
-    case PlanDaily:  return true;
-    case PlanCyclic: return cycle_active_today(it->anchor_day, day,
-                                               it->weeks_on, it->weeks_off);
-    default:         return false;
-  }
+  if (!it || !it->used) return false;
+  // Erst das Raster - fällt der Tag nicht darauf, ist die Phase gleichgültig.
+  if (!cycle_day_hits(it->anchor_day, day, it->every)) return false;
+  if (it->weeks_on == 0) return true;   // unbegrenzt
+  return cycle_active_today(it->anchor_day, day, it->weeks_on, it->weeks_off);
 }
 
 bool plan_due_today(int index) {

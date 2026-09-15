@@ -93,6 +93,13 @@ function world(store, opts) {
   return {
     store, pins, logs,
     fire: (ev, arg) => (sandbox.__ev[ev] || []).forEach((fn) => fn(arg)),
+    // Die gebaute Bytefolge, so wie index.js sie abgelegt hat. Ohne diesen
+    // Zugriff liesse sich das Blockformat nur ueber die Pins pruefen - und die
+    // sagen nichts ueber Bytes, in denen ein Zyklus steckt.
+    lastPlanBytes: () => {
+      const raw = store['supcycle_plan'];
+      return raw ? JSON.parse(raw) : null;
+    },
   };
 }
 
@@ -107,10 +114,10 @@ const SETTLE = 250;
 function savePlan(w) {
   w.fire('webviewclosed', {
     response: JSON.stringify({
-      NAME1: 'Multivitamin', MODE1: '1', TIME1: '480',
-      NAME2: 'Kreatin', MODE2: '1', TIME2: '480',
-      NAME3: 'Black Maca', MODE3: '2', TIME3: '750', ON3: '8', OFF3: '2', SINCE3: '2',
-      NAME4: 'Ashwagandha', MODE4: '2', TIME4: '1200', ON4: '6', OFF4: '2', SINCE4: '6',
+      NAME1: 'Multivitamin', TIME1: '480',
+      NAME2: 'Kreatin', TIME2: '480',
+      NAME3: 'Black Maca', TIME3: '750', ON3: '8', OFF3: '2', SINCE3: '2',
+      NAME4: 'Ashwagandha', TIME4: '1200', ON4: '6', OFF4: '2', SINCE4: '6',
     }),
   });
 }
@@ -185,6 +192,50 @@ async function main() {
   }
 
   console.log('');
+  console.log('Neues Schema: alle X Tage, leer = unbegrenzt');
+  {
+    // Der Plan wird als Bytefolge gebaut; hier wird sie nachgerechnet, denn
+    // ein falsches Byte verschoebe ALLE folgenden Eintraege.
+    const w = world();
+    w.fire('webviewclosed', {
+      response: JSON.stringify({
+        COUNT: '2',
+        NAME1: 'Kreatin', TIME1: '480',                       // nichts weiter
+        NAME2: 'Black Maca', TIME2: '750', EVERY2: '3', ON2: '8', OFF2: '2',
+      }),
+    });
+    const sent = w.lastPlanBytes && w.lastPlanBytes();
+    check('Plan ist 6 x 26 Byte', !sent || sent.length === 156,
+          sent ? String(sent.length) : 'nicht abgreifbar');
+    if (sent) {
+      // Platz 1: benutzt=1, every=1, on=0 (unbegrenzt), off=0
+      check('ohne Angabe: taeglich und unbegrenzt',
+            sent[18] === 1 && sent[19] === 1 && sent[20] === 0 && sent[21] === 0,
+            'benutzt=' + sent[18] + ' every=' + sent[19] + ' on=' + sent[20] + ' off=' + sent[21]);
+      // Platz 2 beginnt bei 26
+      check('alle 3 Tage, 8 Wochen an, 2 Wochen Pause',
+            sent[26+19] === 3 && sent[26+20] === 8 && sent[26+21] === 2,
+            'every=' + sent[26+19] + ' on=' + sent[26+20] + ' off=' + sent[26+21]);
+      // Platz 3 ist leer
+      check('leerer Platz traegt eine Null', sent[2*26+18] === 0, String(sent[2*26+18]));
+    }
+  }
+  {
+    // Eine Pause ohne Einnahmewochen waere eine Angabe ueber etwas, das nicht
+    // stattfindet - sie darf nicht in den Block gelangen.
+    const w = world();
+    w.fire('webviewclosed', {
+      response: JSON.stringify({ COUNT: '1', NAME1: 'Kreatin', TIME1: '480', OFF1: '4' }),
+    });
+    const sent = w.lastPlanBytes && w.lastPlanBytes();
+    if (sent) {
+      check('Pause ohne Einnahmewochen wird verworfen',
+            sent[20] === 0 && sent[21] === 0,
+            'on=' + sent[20] + ' off=' + sent[21]);
+    }
+  }
+
+  console.log('');
   console.log('Anzahlsvorwahl');
   {
     // Zwei vorgewaehlt, aber vier Plaetze ausgefuellt: die Seite zeigt nur
@@ -194,10 +245,10 @@ async function main() {
     w.fire('webviewclosed', {
       response: JSON.stringify({
         COUNT: '2',
-        NAME1: 'Multivitamin', MODE1: '1', TIME1: '480',
-        NAME2: 'Kreatin', MODE2: '1', TIME2: '480',
-        NAME3: 'Black Maca', MODE3: '2', TIME3: '750', ON3: '8', OFF3: '2', SINCE3: '0',
-        NAME4: 'Ashwagandha', MODE4: '2', TIME4: '1200', ON4: '6', OFF4: '2', SINCE4: '0',
+        NAME1: 'Multivitamin', TIME1: '480',
+        NAME2: 'Kreatin', TIME2: '480',
+        NAME3: 'Black Maca', TIME3: '750', ON3: '8', OFF3: '2', SINCE3: '0',
+        NAME4: 'Ashwagandha', TIME4: '1200', ON4: '6', OFF4: '2', SINCE4: '0',
       }),
     });
     w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x0f, TAKEN: 0 } });

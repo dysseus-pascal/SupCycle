@@ -12,24 +12,31 @@
 #define SC_MAX_ITEMS 6
 #define SC_NAME_LEN  16   //< Bytes, nicht Zeichen. Umlaute zählen doppelt.
 
-// Ein Eintrag auf der Leitung UND im Speicher: 25 Byte, feste Reihenfolge.
-// Sechs davon sind 150 Byte und passen damit in einen Persist-Wert (256).
-#define SC_ITEM_BYTES 25
-
-typedef enum {
-  PlanUnused = 0,
-  PlanDaily,      //< jeden Tag
-  PlanCyclic,     //< Wochen an, Wochen aus
-} PlanMode;
+// Ein Eintrag auf der Leitung UND im Speicher: 26 Byte, feste Reihenfolge.
+// Sechs davon sind 156 Byte und passen damit in einen Persist-Wert (256).
+//
+//   0..15  Name
+//   16     Stunde      17  Minute
+//   18     benutzt     19  every (alle X Tage)
+//   20     weeks_on    21  weeks_off
+//   22..25 Ankertag (int32, little endian)
+//
+// Die Fassung davor hatte 25 Byte und statt benutzt/every ein mode
+// (0 leer, 1 täglich, 2 zyklisch). plan_set_from_bytes liest beide Längen -
+// sonst stünde nach einer Aktualisierung "Noch kein Plan" da, bis jemand die
+// Einstellungen öffnet.
+#define SC_ITEM_BYTES     26
+#define SC_ITEM_BYTES_V1  25
 
 typedef struct {
   char name[SC_NAME_LEN];
   uint8_t hour;
   uint8_t minute;
-  uint8_t mode;         //< PlanMode
-  uint8_t weeks_on;
+  uint8_t used;         //< 0 = leerer Platz
+  uint8_t every;        //< alle X Tage, mindestens 1
+  uint8_t weeks_on;     //< 0 = unbegrenzt, also nie Pause
   uint8_t weeks_off;
-  int32_t anchor_day;   //< Tage seit Epoche, an denen Woche 1 begann
+  int32_t anchor_day;   //< Tage seit Epoche, ab denen gezählt wird
 } PlanItem;
 
 void plan_init(void);

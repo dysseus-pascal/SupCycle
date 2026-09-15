@@ -127,6 +127,39 @@ int cycle_selftest_run(void) {
     EQ("und damit kein Wechsel", s.days_left, 0);
   }
 
+  APP_LOG(APP_LOG_LEVEL_INFO, "== Raster: alle X Tage ==");
+  {
+    // every == 1 heisst jeden Tag - und zwar wirklich jeden, auch weit weg
+    // vom Anker.
+    OK("alle 1 Tage: Ankertag", cycle_day_hits(A, A, 1));
+    OK("alle 1 Tage: Tag danach", cycle_day_hits(A, A + 1, 1));
+    OK("alle 1 Tage: Tag 999", cycle_day_hits(A, A + 999, 1));
+
+    // every == 3: Anker, +3, +6 treffen; +1, +2, +4 nicht.
+    OK("alle 3 Tage: Anker trifft", cycle_day_hits(A, A, 3));
+    OK("alle 3 Tage: +1 trifft nicht", !cycle_day_hits(A, A + 1, 3));
+    OK("alle 3 Tage: +2 trifft nicht", !cycle_day_hits(A, A + 2, 3));
+    OK("alle 3 Tage: +3 trifft", cycle_day_hits(A, A + 3, 3));
+    OK("alle 3 Tage: +4 trifft nicht", !cycle_day_hits(A, A + 4, 3));
+    OK("alle 3 Tage: +6 trifft", cycle_day_hits(A, A + 6, 3));
+    OK("alle 3 Tage: +30 trifft", cycle_day_hits(A, A + 30, 3));
+    OK("alle 3 Tage: +31 trifft nicht", !cycle_day_hits(A, A + 31, 3));
+
+    // Gerade Raster: +14 bei alle 2 Tage trifft, +15 nicht.
+    OK("alle 2 Tage: +14 trifft", cycle_day_hits(A, A + 14, 2));
+    OK("alle 2 Tage: +15 trifft nicht", !cycle_day_hits(A, A + 15, 2));
+
+    // Vor dem Anker gilt der Anker. Ein Modulo auf einer negativen Differenz
+    // gaebe je nach Umsetzung ein anderes Vorzeichen - und das Raster
+    // verschoebe sich um einen Tag.
+    OK("vor dem Anker trifft", cycle_day_hits(A, A - 5, 3));
+    OK("weit vor dem Anker trifft", cycle_day_hits(A, A - 100, 7));
+
+    // Unsinn darf nicht durch Null teilen.
+    OK("every 0 gilt als taeglich", cycle_day_hits(A, A + 1, 0));
+    OK("every negativ gilt als taeglich", cycle_day_hits(A, A + 1, -4));
+  }
+
   APP_LOG(APP_LOG_LEVEL_INFO, "== SELBSTTEST FERTIG, Fehler: %d ==", s_fails);
   return s_fails;
 }

@@ -44,3 +44,14 @@ CycleState cycle_state(int32_t anchor_day, int32_t today, int weeks_on, int week
 bool cycle_active_today(int32_t anchor_day, int32_t today, int weeks_on, int weeks_off) {
   return cycle_state(anchor_day, today, weeks_on, weeks_off).phase == CyclePhaseOn;
 }
+
+bool cycle_day_hits(int32_t anchor_day, int32_t today, int every) {
+  if (every < 1) every = 1;
+  if (every == 1) return true;
+  // Vor dem Anker gilt der Anker - sonst ergäbe der Modulo auf einer negativen
+  // Differenz je nach Umsetzung ein anderes Vorzeichen, und das Raster
+  // verschöbe sich.
+  int32_t diff = today - anchor_day;
+  if (diff < 0) diff = 0;
+  return (diff % every) == 0;
+}

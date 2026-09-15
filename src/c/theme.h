@@ -22,7 +22,16 @@
 #define SC_COLOR_BAR_EMPTY   GColorLightGray
 
 #define SC_COLOR_BIG         PBL_IF_COLOR_ELSE(GColorMidnightGreen, GColorBlack)
+// "Erledigt" - und NUR das. Ein abgehakter Eintrag darf zurücktreten.
 #define SC_COLOR_DIM         PBL_IF_COLOR_ELSE(GColorDarkGray, GColorBlack)
+
+// Untertitel und Kopfzeilen stehen SCHWARZ, nicht grau.
+//
+// Nachgemessen an einem Emulator-Bild der Systemtimeline: dort sind Titel UND
+// Untertitel reines Schwarz (0,0,0), die Staffelung kommt allein aus der
+// Schriftgrösse. Grau (85,85,85) sah auf dem Schirm noch ordentlich aus, auf
+// der echten Uhr wusch es aus - das Display leuchtet nicht, es spiegelt.
+#define SC_COLOR_SUB         SC_COLOR_TEXT
 #define SC_COLOR_DONE        PBL_IF_COLOR_ELSE(GColorTiffanyBlue, GColorLightGray)
 
 // Die Kapsel: oben rot, unten weiss. Auf der Schwarz-Weiss-Uhr wird aus Rot

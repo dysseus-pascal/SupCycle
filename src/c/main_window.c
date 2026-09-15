@@ -79,13 +79,22 @@ static void prv_draw_arrow(GContext *ctx, GRect b, int16_t cy) {
   gpath_destroy(arrow);
 }
 
+// "täglich" oder "alle X Tage".
+static void prv_every_text(uint8_t every, char *out, size_t n) {
+  if (every <= 1) snprintf(out, n, "%s", S(STR_DAILY));
+  else snprintf(out, n, S(STR_EVERY_FMT), (int)every);
+}
+
 // Die dritte Zeile eines Eintrags: was über ihn zu sagen ist. Genommenes sagt
 // es selbst, Zyklisches nennt die Phase, Dauerhaftes bleibt bei "täglich".
 static void prv_sub_text(int i, char *out, size_t n) {
   if (plan_taken(i)) { snprintf(out, n, "%s", S(STR_TAKEN)); return; }
   const PlanItem *it = plan_item(i);
-  if (!it || it->mode == PlanDaily) { snprintf(out, n, "%s", S(STR_DAILY)); return; }
+  if (!it) { snprintf(out, n, "%s", S(STR_DAILY)); return; }
   const CycleState c = plan_cycle(i);
+  // of_weeks == 0: kein Zyklus. Dann sagt die Zeile das Raster, denn sonst
+  // hätte sie nichts zu sagen.
+  if (c.of_weeks == 0) { prv_every_text(it->every, out, n); return; }
   if (c.phase == CyclePhaseOn) snprintf(out, n, S(STR_ON_FMT), c.week, c.of_weeks);
   else snprintf(out, n, "%s", S(STR_PAUSE));
 }
@@ -127,7 +136,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
                        GRect(margin, y, col_w, WIDE ? 30 : 24),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
     y += WIDE ? 32 : 26;
-    graphics_context_set_text_color(ctx, SC_COLOR_DIM);
+    graphics_context_set_text_color(ctx, SC_COLOR_SUB);
     graphics_draw_text(ctx, S(STR_NO_PLAN_SUB),
                        fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                        GRect(margin, y, col_w, b.size.h - y - 4),
@@ -147,7 +156,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
   else if (open == 0) snprintf(head, sizeof(head), "%s", S(STR_ALL_DONE));
   else snprintf(head, sizeof(head), S(STR_OPEN_FMT), open, n);
 
-  graphics_context_set_text_color(ctx, SC_COLOR_DIM);
+  graphics_context_set_text_color(ctx, SC_COLOR_SUB);
   graphics_draw_text(ctx, head,
                      fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                      GRect(margin, y, col_w, WIDE ? 22 : 18),
@@ -197,7 +206,9 @@ static void prv_draw_today(GContext *ctx, GRect b) {
 
     char sub[40];
     prv_sub_text(i, sub, sizeof(sub));
-    graphics_context_set_text_color(ctx, SC_COLOR_DIM);
+    // Beim abgehakten Eintrag tritt AUCH der Untertitel zurück - sonst stünde
+    // der Name grau und "genommen" darunter schwarz.
+    graphics_context_set_text_color(ctx, taken ? SC_COLOR_DIM : SC_COLOR_SUB);
     graphics_draw_text(ctx, sub,
                        fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                        GRect(margin, y + LINE_TIME + LINE_NAME, col_w, LINE_SUB + 2),
@@ -219,7 +230,7 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
   const int16_t col_w = b.size.w - SC_SIDEBAR_W - margin - 4;
   int16_t y = PBL_IF_ROUND_ELSE(30, 6);
 
-  graphics_context_set_text_color(ctx, SC_COLOR_DIM);
+  graphics_context_set_text_color(ctx, SC_COLOR_SUB);
   graphics_draw_text(ctx, S(STR_CYCLE),
                      fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                      GRect(margin, y, col_w, WIDE ? 22 : 18),
@@ -235,7 +246,7 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
 
   for (int i = 0; i < SC_MAX_ITEMS && y < b.size.h - 8; i++) {
     const PlanItem *it = plan_item(i);
-    if (!it || it->mode == PlanUnused) continue;
+    if (!it || !it->used) continue;
 
     graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
     graphics_draw_text(ctx, it->name,
@@ -245,9 +256,13 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
     y += big ? CYC_BIG / 2 : CYC_SMALL / 2;
 
-    char sub[48];
-    if (it->mode == PlanDaily) {
-      snprintf(sub, sizeof(sub), "%s", S(STR_DAILY));
+    char sub[64];
+    const CycleState probe = plan_cycle(i);
+    if (probe.of_weeks == 0) {
+      // Unbegrenzt: Raster nennen und dazusagen, dass es keine Pause gibt.
+      char ev[32];
+      prv_every_text(it->every, ev, sizeof(ev));
+      snprintf(sub, sizeof(sub), "%s, %s", ev, S(STR_UNLIMITED));
     } else {
       const CycleState c = plan_cycle(i);
       char phase[32];
@@ -262,7 +277,7 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
       if (rest[0]) snprintf(sub, sizeof(sub), "%s, %s", phase, rest);
       else snprintf(sub, sizeof(sub), "%s", phase);
     }
-    graphics_context_set_text_color(ctx, SC_COLOR_DIM);
+    graphics_context_set_text_color(ctx, SC_COLOR_SUB);
     graphics_draw_text(ctx, sub,
                        fonts_get_system_font(big ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                        GRect(margin, y, col_w, big ? 22 : 18),
