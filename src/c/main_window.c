@@ -1,15 +1,21 @@
 #include "main_window.h"
 #include "theme.h"
 #include "phone.h"
+#include "pill_fx.h"
 #include "plan.h"
 #include "strings.h"
 
 // Ein Fenster, zwei Ansichten — mehr braucht es nicht:
 //
 //   HEUTE    was ansteht, mit Haken bei dem, was schon genommen ist.
-//            Mitteltaste hakt den nächsten offenen ab.
+//            Untere Taste wählt, Mitteltaste hakt das Gewählte ab.
 //   ZYKLUS   für jedes Präparat die laufende Phase. Obere Taste wechselt hin
 //            und zurück.
+//
+// Die Auswahl zeigt eine weisse Pfeilkerbe in der Seitenleiste, wie die
+// Timeline sie am gewählten Eintrag hat. Ihre Höhe wird beim Zeichnen der
+// Liste festgehalten (s_sel_y) und von der Leiste übernommen - beide Schichten
+// rechnen so nicht getrennt an derselben Zeile herum.
 //
 // Zwei Fenster wären zwei Dateien und zwei Lebenszyklen für einen Unterschied,
 // den eine Zeile Zustand abbildet.
@@ -21,6 +27,16 @@ static Layer *s_canvas;
 static Layer *s_sidebar;
 static bool s_cycle_view;
 
+// Die Pfeilkerbe in der Seitenleiste. Schmal gehalten, weil die Leiste selbst
+// nur 30 bis 34 Pixel misst und ein Hinweis auf gleicher Höhe um genau diese
+// Breite ausweichen muss.
+#define NOTCH_W 6
+#define NOTCH_H 8
+
+static int s_sel;            // gewählter Eintrag, Index in den Plan
+static int16_t s_sel_y = -1; // Bildmitte der gewählten Zeile, -1 = nicht sichtbar
+static bool s_playing;       // läuft gerade die Genommen-Animation?
+
 // Haken, von Hand gezeichnet: zwei Striche. Ein Bildsymbol dafür wäre eine
 // Ressourcendatei für achtzehn Pixel.
 static void prv_draw_check(GContext *ctx, GPoint at, int16_t size) {
@@ -31,6 +47,25 @@ static void prv_draw_check(GContext *ctx, GPoint at, int16_t size) {
   graphics_draw_line(ctx, GPoint(at.x + size / 3, at.y + size),
                           GPoint(at.x + size, at.y));
   graphics_context_set_stroke_width(ctx, 1);
+}
+
+// Auf einen heute fälligen Eintrag zeigen. Ist der gemerkte keiner mehr -
+// etwa weil ein Zyklus über Nacht in die Pause ging -, auf den ersten
+// fälligen zurückfallen.
+static void prv_fix_selection(void) {
+  if (s_sel >= 0 && s_sel < SC_MAX_ITEMS && plan_due_today(s_sel)) return;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (plan_due_today(i)) { s_sel = i; return; }
+  }
+  s_sel = -1;
+}
+
+// Nächster heute fälliger Eintrag nach dem gewählten, rundum.
+static void prv_select_next(void) {
+  for (int step = 1; step <= SC_MAX_ITEMS; step++) {
+    const int i = (s_sel + step + SC_MAX_ITEMS) % SC_MAX_ITEMS;
+    if (plan_due_today(i)) { s_sel = i; return; }
+  }
 }
 
 static void prv_draw_today(GContext *ctx, GRect b) {
@@ -76,10 +111,13 @@ static void prv_draw_today(GContext *ctx, GRect b) {
 
   // Ein Eintrag je Zeile. Was heute nicht ansteht, steht gar nicht da - in der
   // Pause will man nicht daran erinnert werden, dass man pausiert.
+  prv_fix_selection();
+  s_sel_y = -1;
   for (int i = 0; i < SC_MAX_ITEMS && y < b.size.h - 8; i++) {
     if (!plan_due_today(i)) continue;
     const PlanItem *it = plan_item(i);
     const bool taken = plan_taken(i);
+    if (i == s_sel) s_sel_y = y + ROW_H / 2;
 
     if (taken) prv_draw_check(ctx, GPoint(margin, y + 4), 12);
 
@@ -143,6 +181,9 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
 }
 
 static void prv_canvas_update(Layer *layer, GContext *ctx) {
+  // Während der Animation gehört der Schirm ihr. Sonst liefe Pilly über der
+  // Liste, und der Strahlenkranz verschwände zwischen den Zeilen.
+  if (s_playing) return;
   const GRect b = layer_get_bounds(layer);
 
   // Kleine Uhrzeit oben, wie im Kopf eines Timeline-Eintrags
@@ -157,34 +198,88 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   else prv_draw_today(ctx, b);
 }
 
+// Ein Hinweis in der Seitenleiste, mittig um cy.
+//
+// Eingerückt wird NUR, wenn die Pfeilkerbe auf derselben Höhe liegt. Ein
+// pauschaler Einzug wäre ruhiger, kostete aber überall Platz: die Leiste misst
+// 30 bis 34 Pixel, und "Cycle" bricht dann zu "Cy...". Lieber weicht das eine
+// Wort aus, neben dem der Pfeil tatsächlich steht - das liest sich als Antwort
+// auf den Pfeil und nicht als Fehler.
+static void prv_hint(GContext *ctx, GRect b, const char *text, int16_t cy) {
+  const bool hit = (s_sel_y >= 0) && (s_sel_y - cy < 18) && (cy - s_sel_y < 18);
+  const int16_t x = hit ? NOTCH_W : 0;
+  graphics_draw_text(ctx, text, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     GRect(x, cy - 9, b.size.w - x, 18),
+                     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+}
+
 static void prv_sidebar_update(Layer *layer, GContext *ctx) {
+  if (s_playing) return;    // auch die Leiste weicht der Animation
   const GRect b = layer_get_bounds(layer);
   graphics_context_set_fill_color(ctx, SC_COLOR_SIDEBAR);
   graphics_fill_rect(ctx, b, 0, GCornerNone);
   graphics_context_set_text_color(ctx, SC_COLOR_ON_SIDEBAR);
 
   // Obere Taste: zwischen den Ansichten wechseln
-  graphics_draw_text(ctx, s_cycle_view ? S(STR_HINT_BACK) : S(STR_HINT_CYCLE),
-                     fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(0, b.size.h / 4 - 9, b.size.w, 18),
-                     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  prv_hint(ctx, b, s_cycle_view ? S(STR_HINT_BACK) : S(STR_HINT_CYCLE), b.size.h / 4);
 
-  // Mitteltaste: abhaken, nur in der Heute-Ansicht und nur wenn offen
-  if (!s_cycle_view && plan_next_open() >= 0) {
-    graphics_draw_text(ctx, S(STR_HINT_TAKE),
-                       fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                       GRect(0, b.size.h / 2 - 9, b.size.w, 18),
-                       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  if (!s_cycle_view) {
+    // Mitteltaste: das Gewählte abhaken - oder den Haken zurücknehmen.
+    if (s_sel >= 0) {
+      prv_hint(ctx, b, plan_taken(s_sel) ? S(STR_HINT_UNDO) : S(STR_HINT_TAKE), b.size.h / 2);
+    }
+    // Untere Taste: weiterwählen. Nur wenn es überhaupt etwas zu wählen gibt.
+    int due = 0;
+    for (int i = 0; i < SC_MAX_ITEMS; i++) {
+      if (plan_due_today(i)) due++;
+    }
+    if (due > 1) {
+      prv_hint(ctx, b, S(STR_HINT_NEXT), b.size.h * 3 / 4);
+    }
+
+    // Weisse Pfeilkerbe am gewählten Eintrag, wie in der Timeline.
+    if (s_sel_y >= 0) {
+      GPoint pts[3] = { GPoint(0, s_sel_y - NOTCH_H), GPoint(NOTCH_W, s_sel_y),
+                        GPoint(0, s_sel_y + NOTCH_H) };
+      const GPathInfo info = { .num_points = 3, .points = pts };
+      GPath *notch = gpath_create(&info);
+      if (notch) {
+        graphics_context_set_fill_color(ctx, GColorWhite);
+        gpath_draw_filled(ctx, notch);
+        gpath_destroy(notch);
+      }
+    }
   }
 }
 
+// Mitteltaste: das Gewählte abhaken - oder den Haken zurücknehmen.
+//
+// Zurücknehmen ist hier richtig, anders als beim Glas in Drinktervall: ein
+// getrunkenes Glas lässt sich nicht ungetrunken machen, ein Fehlgriff auf der
+// Uhr aber sehr wohl. Und ein falscher Haken im Plan ist schlimmer als keiner:
+// er sagt, man habe genommen, was man nicht genommen hat.
+static void prv_fx_done(void) {
+  s_playing = false;
+  main_window_refresh();
+}
+
 static void prv_select(ClickRecognizerRef recognizer, void *context) {
-  if (s_cycle_view) return;
-  const int next = plan_next_open();
-  if (next < 0) return;
-  plan_set_taken(next, true);
-  vibes_short_pulse();
-  phone_send_today();     // Pin als erledigt markieren
+  if (s_cycle_view || s_playing) return;
+  prv_fix_selection();
+  if (s_sel < 0) return;
+  const bool taken = plan_taken(s_sel);
+  plan_set_taken(s_sel, !taken);
+  phone_send_today();     // Pin nachziehen
+
+  if (!taken) {
+    // Genommen: Pilly spielt. Beim Zurücknehmen nicht - eine Feier für einen
+    // Fehlgriff wäre verkehrt herum.
+    vibes_short_pulse();
+    s_playing = true;
+    const GRect b = layer_get_bounds(s_canvas);
+    pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),
+                 (int16_t)(b.size.w * 34 / 100), prv_fx_done);
+  }
   main_window_refresh();
 }
 
@@ -193,9 +288,17 @@ static void prv_up(ClickRecognizerRef recognizer, void *context) {
   main_window_refresh();
 }
 
+static void prv_down(ClickRecognizerRef recognizer, void *context) {
+  if (s_cycle_view) return;
+  prv_fix_selection();
+  prv_select_next();
+  main_window_refresh();
+}
+
 static void prv_click_config(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_select);
   window_single_click_subscribe(BUTTON_ID_UP, prv_up);
+  window_single_click_subscribe(BUTTON_ID_DOWN, prv_down);
 }
 
 static void prv_tick(struct tm *tick_time, TimeUnits units_changed) {
@@ -212,11 +315,15 @@ static void prv_load(Window *window) {
                                  SC_SIDEBAR_W, bounds.size.h));
   layer_set_update_proc(s_sidebar, prv_sidebar_update);
   layer_add_child(root, s_sidebar);
+  // Zuletzt, damit die Animation über allem liegt.
+  pill_fx_init(root);
   tick_timer_service_subscribe(MINUTE_UNIT, prv_tick);
 }
 
 static void prv_unload(Window *window) {
   tick_timer_service_unsubscribe();
+  pill_fx_deinit();
+  s_playing = false;
   layer_destroy(s_sidebar);
   layer_destroy(s_canvas);
   window_destroy(s_window);

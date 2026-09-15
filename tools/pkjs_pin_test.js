@@ -184,6 +184,39 @@ async function main() {
           new Date(maca.body.time).getMinutes() === 30, maca.body.time);
   }
 
+  console.log('');
+  console.log('Anzahlsvorwahl');
+  {
+    // Zwei vorgewaehlt, aber vier Plaetze ausgefuellt: die Seite zeigt nur
+    // zwei, also duerfen auch nur zwei zaehlen. Wuerde der Rest uebernommen,
+    // plante man etwas ein, das niemand mehr sieht.
+    const w = world();
+    w.fire('webviewclosed', {
+      response: JSON.stringify({
+        COUNT: '2',
+        NAME1: 'Multivitamin', MODE1: '1', TIME1: '480',
+        NAME2: 'Kreatin', MODE2: '1', TIME2: '480',
+        NAME3: 'Black Maca', MODE3: '2', TIME3: '750', ON3: '8', OFF3: '2', SINCE3: '0',
+        NAME4: 'Ashwagandha', MODE4: '2', TIME4: '1200', ON4: '6', OFF4: '2', SINCE4: '0',
+      }),
+    });
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x0f, TAKEN: 0 } });
+    await wait(SETTLE);
+    check('nur die beiden vorgewaehlten werden Pins', w.pins.length === 2,
+          w.pins.map((x) => x.body.layout.title).join(', '));
+    check('und zwar die ersten beiden',
+          w.pins.every((x) => x.body.layout.title === 'Multivitamin' ||
+                              x.body.layout.title === 'Kreatin'),
+          w.pins.map((x) => x.body.layout.title).join(', '));
+  }
+  {
+    // Ohne Vorwahl - etwa eine aeltere gespeicherte Antwort - gilt weiter alles.
+    const w = world();
+    savePlan(w);
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x0f, TAKEN: 0 } });
+    await wait(SETTLE);
+    check('ohne Vorwahl zaehlen alle vier', w.pins.length === 4, String(w.pins.length));
+  }
   console.log('\nNur was faellig ist');
   {
     const w = world(JSON.parse(JSON.stringify(saved)));

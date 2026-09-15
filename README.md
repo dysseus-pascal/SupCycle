@@ -11,8 +11,10 @@ Schrift, dunkle Seitenleiste rechts. Läuft auf emery, flint und gabbro.
 
 | | | |
 |---|---|---|
-| ![Heute](screenshots/emery/01-heute.png) | ![Abgehakt](screenshots/emery/02-abgehakt.png) | ![Zyklus](screenshots/emery/03-zyklus.png) |
-| heute | abgehakt | Zyklus |
+| ![Heute](screenshots/emery/01-heute.png) | ![Auswahl](screenshots/emery/08-auswahl.png) | ![Abgehakt](screenshots/emery/02-abgehakt.png) |
+| heute | Auswahl gewandert | abgehakt |
+| ![Zyklus](screenshots/emery/03-zyklus.png) | | |
+| Zyklus | | |
 | ![Erinnerung](screenshots/emery/04-erinnerung.png) | ![Pilly](screenshots/emery/05-kapsel.png) | |
 | Erinnerung | Pilly | |
 | ![Geschüttelt](screenshots/emery/06-geschuettelt.png) | ![Verpufft](screenshots/emery/07-verpufft.png) | |
@@ -25,8 +27,20 @@ Ein Bildschirm, zwei Ansichten.
 | Taste | Aktion |
 |---|---|
 | Oben | zwischen **Heute** und **Zyklus** wechseln |
-| Mitte | den nächsten offenen Eintrag abhaken |
+| Mitte | das Gewählte abhaken — nochmal drücken nimmt den Haken zurück |
+| Unten | den nächsten Eintrag wählen |
 | Zurück | App verlassen |
+
+Die Auswahl zeigt eine weisse **Pfeilkerbe** in der Seitenleiste, wie die
+Timeline sie am gewählten Eintrag hat.
+
+Den Haken zurücknehmen zu können ist hier richtig, anders als beim Glas in
+Drinktervall: ein getrunkenes Glas lässt sich nicht ungetrunken machen, ein
+Fehlgriff auf der Uhr aber sehr wohl. Und ein falscher Haken im Plan ist
+schlimmer als keiner — er sagt, man habe genommen, was man nicht genommen hat.
+
+Beim Abhaken spielt **Pilly** — auf dem Heute-Schirm wie im Erinnerungsfenster.
+Beim Zurücknehmen nicht: eine Feier für einen Fehlgriff wäre verkehrt herum.
 
 **Heute** zeigt, was ansteht, mit Haken bei dem, was schon genommen ist. Was
 heute nicht dran ist, steht gar nicht da — in der Pause will man nicht daran
@@ -43,6 +57,10 @@ Der Stand steht auch im App-Glance des Starters.
 Alles wird auf der **Konfigseite der Telefon-App** eingetragen — sechs Plätze,
 je mit Name, Uhrzeit, Rhythmus (täglich oder zyklisch), Wochen Einnahme, Wochen
 Pause und „Zyklus läuft seit". Ein Platz ohne Namen bleibt leer.
+
+Ganz oben steht, **wie viele Präparate** es sind — nur so viele Plätze zeigt die
+Seite. Ohne diese Vorwahl stünden dort immer sechs Abschnitte, von denen die
+meisten leer bleiben, und man suchte seinen Eintrag zwischen Platzhaltern.
 
 Sechs feste Plätze statt einer Liste zum Anlegen und Löschen: Clay kennt keine
 dynamischen Listen, und sie nachzubauen hiesse, die Seite selbst zu schreiben.

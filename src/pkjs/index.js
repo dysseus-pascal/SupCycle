@@ -58,7 +58,11 @@ function getLang() {
 // webviewclosed dieselbe benutzen.
 var s_clay = null;
 function getClay() {
-  if (!s_clay) s_clay = new Clay(clayConfig(getLang()), null, { autoHandleEvents: false });
+  if (!s_clay) {
+    // Die zweite Stelle ist die Funktion, die IN der Konfigseite laeuft: sie
+    // blendet die Plaetze jenseits der Vorwahl aus.
+    s_clay = new Clay(clayConfig(getLang()), clayConfig.custom, { autoHandleEvents: false });
+  }
   return s_clay;
 }
 
@@ -114,9 +118,16 @@ function buildPlan(dict) {
   var items = [];
   var used = 0;
 
+  // Die Vorwahl begrenzt, was zaehlt. Ein Platz jenseits davon ist in der
+  // Seite verborgen; seinen alten Inhalt trotzdem zu uebernehmen hiesse,
+  // etwas einzuplanen, das niemand mehr sieht.
+  var count = num(dict, 'COUNT', SLOTS);
+  if (count < 1 || count > SLOTS) count = SLOTS;
+
   for (var i = 1; i <= SLOTS; i++) {
-    var name = dict['NAME' + i] !== undefined ? String(dict['NAME' + i].value || '').trim() : '';
-    var mode = num(dict, 'MODE' + i, MODE_UNUSED);
+    var name = i <= count && dict['NAME' + i] !== undefined
+      ? String(dict['NAME' + i].value || '').trim() : '';
+    var mode = i <= count ? num(dict, 'MODE' + i, MODE_UNUSED) : MODE_UNUSED;
     if (!name || mode === MODE_UNUSED) {
       // Leerer Platz: trotzdem 25 Byte, damit die Reihenfolge stimmt. Die Uhr
       // erkennt ihn am Modus 0.

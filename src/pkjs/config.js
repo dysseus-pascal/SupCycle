@@ -19,6 +19,7 @@ var TEXT = [
     heading: 'SupCycle',
     intro: 'Was du nimmst, wann, und in welchem Zyklus. Ein Platz ohne Namen ' +
            'bleibt leer.',
+    count: 'Wie viele Präparate?',
     slot: 'Präparat',
     name: 'Name',
     namePlaceholder: 'z. B. Multivitamin',
@@ -40,6 +41,7 @@ var TEXT = [
     heading: 'SupCycle',
     intro: 'What you take, when, and in which cycle. A slot without a name ' +
            'stays empty.',
+    count: 'How many supplements?',
     slot: 'Supplement',
     name: 'Name',
     namePlaceholder: 'e.g. multivitamin',
@@ -87,6 +89,8 @@ function slotSection(t, i) {
   var n = i + 1;
   return {
     type: 'section',
+    // Die Kennung braucht die Vorwahl unten, um Plätze ein- und auszublenden.
+    id: 'slot' + n,
     items: [
       { type: 'heading', defaultValue: t.slot + ' ' + n },
       {
@@ -144,7 +148,17 @@ module.exports = function (lang) {
   var t = TEXT[lang] || TEXT[0];
   var page = [
     { type: 'heading', defaultValue: t.heading },
-    { type: 'text', defaultValue: t.intro }
+    { type: 'text', defaultValue: t.intro },
+    {
+      // Vorwahl: so viele Plätze zeigt die Seite, der Rest bleibt verborgen.
+      // Ohne sie stünden hier immer sechs Abschnitte, von denen die meisten
+      // leer bleiben - und man sucht seinen Eintrag zwischen Platzhaltern.
+      type: 'select',
+      messageKey: 'COUNT',
+      label: t.count,
+      defaultValue: '2',
+      options: numberOptions(1, SLOTS)
+    }
   ];
   for (var i = 0; i < SLOTS; i++) page.push(slotSection(t, i));
   page.push({ type: 'text', defaultValue: t.cycleNote });
@@ -153,3 +167,35 @@ module.exports = function (lang) {
 };
 
 module.exports.SLOTS = SLOTS;
+
+/**
+ * Läuft IN DER KONFIGSEITE, nicht hier: Clay reicht diese Funktion in die
+ * Webansicht weiter. Sie darf deshalb nichts von aussen benutzen - keine
+ * Variable dieser Datei, keinen Verweis auf SLOTS. Was sie braucht, steht in
+ * ihr selbst.
+ *
+ * Aufgabe: nur so viele Plätze zeigen, wie die Vorwahl sagt, und sofort
+ * nachziehen, wenn man sie ändert.
+ */
+module.exports.custom = function () {
+  var clayConfig = this;
+  var MAX = 6;
+
+  function apply() {
+    var sel = clayConfig.getItemByMessageKey('COUNT');
+    var n = sel ? parseInt(sel.get(), 10) : MAX;
+    if (!n || n < 1 || n > MAX) n = MAX;
+    for (var i = 1; i <= MAX; i++) {
+      var sec = clayConfig.getItemById('slot' + i);
+      if (!sec) continue;
+      if (i <= n) sec.show();
+      else sec.hide();
+    }
+  }
+
+  clayConfig.on(clayConfig.EVENTS.AFTER_BUILD, function () {
+    apply();
+    var sel = clayConfig.getItemByMessageKey('COUNT');
+    if (sel) sel.on('change', apply);
+  });
+};

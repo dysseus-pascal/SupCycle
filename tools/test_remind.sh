@@ -74,9 +74,13 @@ echo "----- Log -----"
 grep -iE "Wecker|Vom Wecker|Plan" "$LOG" | sed 's/^\[[^]]*\] [^ ]*> //' | head -8
 echo "---------------"
 
-D="$HOME/shots"
-rm -rf "$D"; mkdir -p "$D"; cp "$OUT"/*.png "$D/" 2>/dev/null
-echo "$(ls "$D" | wc -l) Bilder"
+# Die Bilder liegen unter $OUT. Wer sie anderswo braucht, setzt
+# SUPCYCLE_SHOTS auf ein Zielverzeichnis - ein fester Pfad hier hinge an
+# genau einem Rechner.
+if [ -n "$SUPCYCLE_SHOTS" ]; then
+  mkdir -p "$SUPCYCLE_SHOTS"; cp "$OUT"/*.png "$SUPCYCLE_SHOTS/" 2>/dev/null
+fi
+echo "$(ls "$OUT" | wc -l) Bilder in $OUT"
 
 # Sauberen Stand wiederherstellen.
 sh "$SRC/tools/sync_supcycle.sh" "$SRC" >/dev/null 2>&1

@@ -10,7 +10,6 @@
 //   STR(schluessel, maxbytes, en, de)
 
 // --- Hauptschirm ---
-STR(STR_TODAY,        0,  "Today",              "Heute")
 STR(STR_ALL_DONE,     0,  "All taken",          "Alles genommen")
 STR(STR_NOTHING_DUE,  0,  "Nothing due today",  "Heute nichts fällig")
 STR(STR_NO_PLAN,      0,  "No plan yet",        "Noch kein Plan")
@@ -29,6 +28,8 @@ STR(STR_DAY_LEFT,    32,  "1 day to go",        "noch 1 Tag")
 
 // --- Tastenhinweise in der Seitenleiste (kurz! die Leiste ist schmal) ---
 STR(STR_HINT_TAKE,   14,  "Take",               "Nehmen")
+STR(STR_HINT_UNDO,   14,  "Undo",               "Zurück")
+STR(STR_HINT_NEXT,   14,  "Next",               "Weiter")
 STR(STR_HINT_CYCLE,  14,  "Cycle",              "Zyklus")
 STR(STR_HINT_BACK,   14,  "Today",              "Heute")
 
