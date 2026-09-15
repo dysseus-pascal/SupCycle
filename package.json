@@ -1,7 +1,7 @@
 {
   "name": "supcycle",
   "author": "dysseus-pascal",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "license": "CC0-1.0",
   "keywords": [
     "pebble-app"
@@ -74,6 +74,12 @@
     ],
     "resources": {
       "media": [
+        {
+          "menuIcon": true,
+          "type": "bitmap",
+          "name": "IMAGE_ICON",
+          "file": "images/system_icon.png"
+        },
         {
           "type": "bitmap",
           "name": "ICON_CHECK",
