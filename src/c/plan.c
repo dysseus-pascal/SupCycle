@@ -131,15 +131,19 @@ CycleState plan_cycle(int index) {
   return cycle_state(it->anchor_day, plan_today(), it->weeks_on, it->weeks_off);
 }
 
-bool plan_due_today(int index) {
+bool plan_due_on(int index, int32_t day) {
   const PlanItem *it = plan_item(index);
   if (!it) return false;
   switch (it->mode) {
     case PlanDaily:  return true;
-    case PlanCyclic: return cycle_active_today(it->anchor_day, plan_today(),
+    case PlanCyclic: return cycle_active_today(it->anchor_day, day,
                                                it->weeks_on, it->weeks_off);
     default:         return false;
   }
+}
+
+bool plan_due_today(int index) {
+  return plan_due_on(index, plan_today());
 }
 
 bool plan_taken(int index) {

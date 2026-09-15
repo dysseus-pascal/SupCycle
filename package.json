@@ -1,7 +1,7 @@
 {
   "name": "supcycle",
   "author": "dysseus-pascal",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "CC0-1.0",
   "keywords": [
     "pebble-app"
@@ -68,7 +68,18 @@
       "SINCE6"
     ],
     "resources": {
-      "media": []
+      "media": [
+        {
+          "type": "bitmap",
+          "name": "ICON_CHECK",
+          "file": "images/icon_check.png"
+        },
+        {
+          "type": "bitmap",
+          "name": "ICON_SNOOZE",
+          "file": "images/action_bar_icon_snooze.png"
+        }
+      ]
     }
   }
 }

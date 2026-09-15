@@ -25,4 +25,9 @@
 #define SC_COLOR_DIM         PBL_IF_COLOR_ELSE(GColorDarkGray, GColorBlack)
 #define SC_COLOR_DONE        PBL_IF_COLOR_ELSE(GColorTiffanyBlue, GColorLightGray)
 
+// Die Kapsel: oben rot, unten weiss. Auf der Schwarz-Weiss-Uhr wird aus Rot
+// Schwarz - die Zweiteilung bleibt damit erkennbar, und das Gesicht sitzt
+// ohnehin auf der hellen Haelfte.
+#define SC_COLOR_PILL        PBL_IF_COLOR_ELSE(GColorRed, GColorBlack)
+
 #define SC_MARGIN            PBL_IF_ROUND_ELSE(38, 9)

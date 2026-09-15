@@ -49,6 +49,11 @@ int32_t plan_today(void);
 // Steht dieses Präparat heute an? Dauerhafte immer, zyklische je nach Phase.
 bool plan_due_today(int index);
 
+// Dasselbe für einen beliebigen Tag (Tage seit Epoche). Die Weckplanung
+// braucht das: sie stellt auch Wecker für morgen, und morgen kann ein Zyklus
+// schon in der Pause sein.
+bool plan_due_on(int index, int32_t day);
+
 // Zyklusstand für die Anzeige. Bei dauerhaften Einträgen ist phase immer
 // CyclePhaseOn und days_left 0.
 CycleState plan_cycle(int index);

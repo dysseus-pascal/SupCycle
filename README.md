@@ -7,6 +7,15 @@ Die Oberfläche folgt der **Sprache der Uhr** (Deutsch und Englisch, Englisch al
 Rückfall) und dem Timeline-Look der Schwesterapps: weisser Grund, schwarze
 Schrift, dunkle Seitenleiste rechts. Läuft auf emery, flint und gabbro.
 
+## Screenshots
+
+| | | |
+|---|---|---|
+| ![Heute](screenshots/emery/01-heute.png) | ![Abgehakt](screenshots/emery/02-abgehakt.png) | ![Zyklus](screenshots/emery/03-zyklus.png) |
+| heute | abgehakt | Zyklus |
+| ![Erinnerung](screenshots/emery/04-erinnerung.png) | ![Kapsel](screenshots/emery/05-kapsel.png) | ![Verpufft](screenshots/emery/06-verpufft.png) |
+| Erinnerung | genommen | verpufft |
+
 ## Bedienung
 
 Ein Bildschirm, zwei Ansichten.
@@ -63,6 +72,7 @@ seit der Epoche, aus der Ortszeit.
 tools/sync_supcycle.sh <Quellordner>            # spiegeln + bauen
 tools/sync_supcycle.sh <Quellordner> demo       # mit Beispielplan
 sh tools/selftest.sh <Quellordner>                  # Zyklusrechnung
+sh tools/test_remind.sh <Quellordner>               # Weckpfad und Animation
 node tools/strings_check.js src/c/strings_table.h
 ```
 
@@ -80,11 +90,54 @@ ansehen lassen; dort gibt es keine Konfigseite. Die Zyklen stehen dabei
 absichtlich in verschiedenen Phasen — eines in der Einnahme, eines in der Pause
 —, sonst sähe man nur den halben Fall.
 
+## Erinnerungen
+
+Zur eingetragenen Uhrzeit meldet sich die Uhr: ein Vollbild mit der Kapsel, der
+Uhrzeit und dem, was ansteht. Dreimal doppelt vibrieren im Abstand von zwanzig
+Sekunden, dann Ruhe — wer nicht hinsieht, soll nicht endlos gerüttelt werden.
+
+| Taste | Aktion |
+|---|---|
+| Mitte | genommen — abhaken, Kapsel zerplatzt, App schliesst |
+| Unten | später — in 15 Minuten nochmal |
+| Zurück | wegdrücken, ohne zu zählen |
+
+Zwei Präparate zur selben Uhrzeit ergeben **eine** Erinnerung mit zwei Zeilen,
+nicht zwei Erinnerungen. Und ist zu dieser Zeit schon alles genommen, erscheint
+gar nichts — eine Erinnerung an etwas bereits Genommenes wäre schlimmer als
+keine.
+
+**In der Pause schweigt die Uhr.** Sonst hakt man aus Gewohnheit ab, und der
+Zyklus ist wertlos.
+
+**Der Schirm geht dabei an.** Ein Pebble-Wakeup startet die App im Vordergrund;
+einen stillen Hintergrundlauf gibt es nicht. Nach dem Abhaken schliesst sie sich
+wieder.
+
+Pebble erlaubt höchstens **acht** geplante Wakeups je App. Geplant werden immer
+die nächsten acht über zwei Tage hinweg, und bei jedem Start neu — so hält sich
+der Weckplan selbst aktuell, auch nach einem Neustart, einer Zeitumstellung oder
+einem Zyklus, der über Nacht in die Pause gewechselt ist.
+
+## Die Kapsel
+
+Das Maskottchen folgt dem Glas aus Drinktervall: dasselbe Strichbild, dasselbe
+Aufploppen mit Überschwingen, derselbe Strahlenkranz zum Schluss. Sie nickt
+dazwischen zweimal — nach oben und unten, nicht seitlich; seitlich sähe aus wie
+das Schütteln des Glases beim Leeren, und hier wird nichts geleert.
+
+Oben rot, unten weiss, Gesicht auf der hellen Hälfte. Auf der
+Schwarz-Weiss-Uhr wird aus Rot Schwarz; die Zweiteilung bleibt erkennbar.
+
+Gebaut ohne Zuschneiden — die SDK bietet dafür nichts Öffentliches. Statt
+dessen: erst die ganze Kapsel weiss, dann die obere Hälfte als Rechteck mit nur
+oben runden Ecken darüber. Das trifft die Form genau, weil der Radius gleich der
+halben Breite ist.
+
 ## Noch nicht drin
 
-**Erinnerungen.** Die Uhrzeit je Präparat wird eingetragen, angezeigt und
-gespeichert, aber es klingelt noch nichts. Wakeups und Timeline-Pins sind der
-nächste Schritt; die Mechanik dafür steht in Drinktervall bereit.
+**Timeline-Pins.** Was heute ansteht, liesse sich auch ohne App-Öffnen in der
+Timeline zeigen. Die Mechanik dafür steht in Drinktervall bereit.
 
 **Health Connect.** Für diesen Stack lohnt es nicht: Kreatin, Maca und
 Ashwagandha haben dort keine Felder, und beim Multivitamin fehlen ausgerechnet

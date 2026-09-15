@@ -8,6 +8,8 @@
 #                              ins App-Log.
 #   demo       -DSC_FAKE_PLAN  Beispielplan einsetzen, damit sich die
 #                              Ansichten im Emulator ansehen lassen.
+#   wake       dazu -DSC_TEST_WAKE   Wecker in 1 Minute statt zur Planzeit
+#   slow       dazu -DFX_MS=9000     Animation in Zeitlupe, zum Fotografieren
 # Beides nur in der WSL-Kopie; die Windows-Quelle bleibt unberuehrt.
 # Alle nur in der WSL-KOPIE; die Windows-Quelle bleibt unberuehrt.
 export PATH=$HOME/.local/bin:$PATH
@@ -34,6 +36,8 @@ FLAGS=""
 case "$MODE" in
   selftest) FLAGS="-DSC_SELFTEST" ;;
   demo)     FLAGS="-DSC_FAKE_PLAN" ;;
+  wake)     FLAGS="-DSC_FAKE_PLAN -DSC_TEST_WAKE" ;;
+  slow)     FLAGS="-DSC_FAKE_PLAN -DSC_TEST_WAKE -DFX_MS=9000" ;;
 esac
 if [ -n "$FLAGS" ]; then
   # Anker ist eine Zeile, die es NUR in build() gibt. ctx.load('pebble_sdk')
