@@ -20,6 +20,31 @@ Schrift, dunkle Seitenleiste rechts. Läuft auf emery, flint und gabbro.
 | ![Geschüttelt](screenshots/emery/06-geschuettelt.png) | ![Verpufft](screenshots/emery/07-verpufft.png) | |
 | geschüttelt | verpufft | |
 
+## Timeline-Look
+
+Der Heute-Schirm ist der Liste der Systemtimeline nachgebaut: **LECO-Zeit**,
+darunter der **Name fett**, darunter ein **gedämpfter Untertitel** mit dem, was
+über den Eintrag zu sagen ist — „täglich", „Woche 3 von 8", „genommen".
+
+Nachgebaut heisst hier: abgemessen, nicht erinnert. Die Vorlage sind
+Emulator-Aufnahmen der echten Timeline (`pebble insert-pin`, dann vom
+Zifferblatt nach oben). Daher stammen auch die Masse — die Seitenleiste ist
+34 von 200 Pixeln breit, der Auswahlpfeil ragt 13 Pixel heraus und ist 25 hoch.
+Ein vorher geschätzter Pfeil war deutlich zu klein und las sich wie ein
+Versehen statt wie ein Zeiger.
+
+Drei grosse Zeilen je Eintrag heissen wenige Einträge auf einmal — auf der
+Pebble Time 2 zwei. Die Liste zieht deshalb mit der Auswahl mit. Ohne das
+liefe die Auswahl unten hinaus und man wählte blind weiter.
+
+Die kleine Uhrzeit über der Liste ist weg: die Timeline-LISTE hat keine, nur
+das Pin-Detail. Die sechzehn Pixel gehören dem ersten Eintrag.
+
+In der Zyklusansicht richtet sich die Schriftgrösse nach dem Platz: solange
+ALLE Präparate gross hineinpassen, stehen sie gross da, sonst eine Nummer
+kleiner. Nach einer geratenen Anzahl zu schalten hiess, das letzte gross
+anzuschreiben und seinen Untertitel unter den Bildrand zu schieben.
+
 ## Bedienung
 
 Ein Bildschirm, zwei Ansichten.
@@ -31,13 +56,17 @@ Ein Bildschirm, zwei Ansichten.
 | Unten | den nächsten Eintrag wählen |
 | Zurück | App verlassen |
 
-Die Auswahl zeigt eine weisse **Pfeilkerbe** in der Seitenleiste, wie die
-Timeline sie am gewählten Eintrag hat.
+Die Auswahl zeigt einen **Pfeil in der Farbe der Seitenleiste**, der nach links
+auf den Eintrag hinausragt — genau wie in der Systemtimeline.
 
 Den Haken zurücknehmen zu können ist hier richtig, anders als beim Glas in
 Drinktervall: ein getrunkenes Glas lässt sich nicht ungetrunken machen, ein
 Fehlgriff auf der Uhr aber sehr wohl. Und ein falscher Haken im Plan ist
 schlimmer als keiner — er sagt, man habe genommen, was man nicht genommen hat.
+
+Die Hinweise in der Seitenleiste bleiben klein. Sie stehen in einer 34 Pixel
+schmalen Spalte, und „Cycle" bricht dort in jeder grösseren Schrift um. Wichtig
+ist, was links steht; die Leiste ist Beiwerk.
 
 Beim Abhaken spielt **Pilly** — auf dem Heute-Schirm wie im Erinnerungsfenster.
 Beim Zurücknehmen nicht: eine Feier für einen Fehlgriff wäre verkehrt herum.

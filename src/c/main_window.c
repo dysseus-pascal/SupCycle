@@ -12,29 +12,44 @@
 //   ZYKLUS   für jedes Präparat die laufende Phase. Obere Taste wechselt hin
 //            und zurück.
 //
-// Die Auswahl zeigt eine weisse Pfeilkerbe in der Seitenleiste, wie die
-// Timeline sie am gewählten Eintrag hat. Ihre Höhe wird beim Zeichnen der
-// Liste festgehalten (s_sel_y) und von der Leiste übernommen - beide Schichten
-// rechnen so nicht getrennt an derselben Zeile herum.
+// HEUTE ist der Liste der Systemtimeline nachgebaut - nicht aus dem
+// Gedächtnis, sondern nach einem Emulator-Screenshot von ihr: LECO-Zeit,
+// darunter der Name fett, darunter ein gedämpfter Untertitel. Drei grosse
+// Zeilen statt einer gedrängten, und entsprechend wenige auf einmal.
+//
+// Die Auswahl ist ein Dreieck in der FARBE DER LEISTE, das nach LINKS auf den
+// weissen Grund hinausragt - genau wie dort. Eine weisse Kerbe IN der Leiste
+// wäre das Gegenteil: sie nähme der Leiste Platz, statt auf den Eintrag zu
+// zeigen, und stritte mit dem Hinweis auf gleicher Höhe.
 //
 // Zwei Fenster wären zwei Dateien und zwei Lebenszyklen für einen Unterschied,
 // den eine Zeile Zustand abbildet.
 
-#define ROW_H  (PBL_DISPLAY_HEIGHT >= 200 ? 30 : 26)
+// Ein Eintrag: Zeit, Name, Untertitel. Die Höhen stehen hier zusammen, damit
+// sich Zeilenhöhe und Fensterhöhe nicht getrennt auseinanderentwickeln.
+#define WIDE       (PBL_DISPLAY_WIDTH >= 180)
+#define LINE_TIME  (WIDE ? 22 : 20)
+#define LINE_NAME  (WIDE ? 28 : 22)
+#define LINE_SUB   (WIDE ? 20 : 16)
+#define ROW_H      (LINE_TIME + LINE_NAME + LINE_SUB + (WIDE ? 4 : 0))
+
+// Die Pfeilspitze der Auswahl. Sitzt mit der Grundlinie auf der linken Kante
+// der Leiste und zeigt nach links auf den Eintrag.
+//
+// Die Masse sind an der Systemtimeline abgemessen, nicht geschätzt: auf einem
+// 200 Pixel breiten Schirm ragt ihr Pfeil 13 Pixel heraus und ist 25 hoch,
+// bei einer ebenfalls 34 Pixel breiten Leiste. Schmaler wirkte er wie ein
+// Versehen statt wie ein Zeiger.
+#define ARROW_W    (WIDE ? 14 : 10)
+#define ARROW_H    (WIDE ? 14 : 11)
 
 static Window *s_window;
 static Layer *s_canvas;
 static Layer *s_sidebar;
 static bool s_cycle_view;
 
-// Die Pfeilkerbe in der Seitenleiste. Schmal gehalten, weil die Leiste selbst
-// nur 30 bis 34 Pixel misst und ein Hinweis auf gleicher Höhe um genau diese
-// Breite ausweichen muss.
-#define NOTCH_W 6
-#define NOTCH_H 8
-
 static int s_sel;            // gewählter Eintrag, Index in den Plan
-static int16_t s_sel_y = -1; // Bildmitte der gewählten Zeile, -1 = nicht sichtbar
+static int s_first;          // erster sichtbarer Eintrag, Position in der Fälligenliste
 static bool s_playing;       // läuft gerade die Genommen-Animation?
 
 // Haken, von Hand gezeichnet: zwei Striche. Ein Bildsymbol dafür wäre eine
@@ -47,6 +62,32 @@ static void prv_draw_check(GContext *ctx, GPoint at, int16_t size) {
   graphics_draw_line(ctx, GPoint(at.x + size / 3, at.y + size),
                           GPoint(at.x + size, at.y));
   graphics_context_set_stroke_width(ctx, 1);
+}
+
+// Die Pfeilspitze der Auswahl. Sie wird vom Leinwand-Layer gezeichnet, nicht
+// von der Leiste: sie ragt nach links über deren Kante hinaus und würde dort
+// abgeschnitten. Die Leinwand geht über die ganze Breite.
+static void prv_draw_arrow(GContext *ctx, GRect b, int16_t cy) {
+  const int16_t x = b.size.w - SC_SIDEBAR_W;
+  GPoint pts[3] = { GPoint(x, cy - ARROW_H), GPoint(x - ARROW_W, cy),
+                    GPoint(x, cy + ARROW_H) };
+  const GPathInfo info = { .num_points = 3, .points = pts };
+  GPath *arrow = gpath_create(&info);
+  if (!arrow) return;
+  graphics_context_set_fill_color(ctx, SC_COLOR_SIDEBAR);
+  gpath_draw_filled(ctx, arrow);
+  gpath_destroy(arrow);
+}
+
+// Die dritte Zeile eines Eintrags: was über ihn zu sagen ist. Genommenes sagt
+// es selbst, Zyklisches nennt die Phase, Dauerhaftes bleibt bei "täglich".
+static void prv_sub_text(int i, char *out, size_t n) {
+  if (plan_taken(i)) { snprintf(out, n, "%s", S(STR_TAKEN)); return; }
+  const PlanItem *it = plan_item(i);
+  if (!it || it->mode == PlanDaily) { snprintf(out, n, "%s", S(STR_DAILY)); return; }
+  const CycleState c = plan_cycle(i);
+  if (c.phase == CyclePhaseOn) snprintf(out, n, S(STR_ON_FMT), c.week, c.of_weeks);
+  else snprintf(out, n, "%s", S(STR_PAUSE));
 }
 
 // Auf einen heute fälligen Eintrag zeigen. Ist der gemerkte keiner mehr -
@@ -69,91 +110,140 @@ static void prv_select_next(void) {
 }
 
 static void prv_draw_today(GContext *ctx, GRect b) {
-  const bool wide = PBL_DISPLAY_WIDTH >= 180;
-  const int16_t margin = SC_MARGIN;
-  const int16_t col_w = b.size.w - SC_SIDEBAR_W - margin - 4;
-  int16_t y = PBL_IF_ROUND_ELSE(40, 16);
+  // Auf der Heute-Liste ein knapperer Rand als sonst: der Name steht hier in
+  // fetter 24er Schrift, und "Multivitamin" braucht jeden Pixel. Die
+  // Systemtimeline hält sich links ebenso knapp.
+  const int16_t margin = PBL_IF_ROUND_ELSE(SC_MARGIN, 6);
+  // Der Text hört vor der Pfeilspitze auf. Sonst liefe ein langer Name unter
+  // sie - und zwar nur beim gewählten Eintrag, also sprunghaft.
+  const int16_t col_w = b.size.w - SC_SIDEBAR_W - margin - ARROW_W;
+  int16_t y = PBL_IF_ROUND_ELSE(30, 6);
 
   if (plan_count() == 0) {
     graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
     graphics_draw_text(ctx, S(STR_NO_PLAN),
-                       fonts_get_system_font(wide ? FONT_KEY_GOTHIC_24_BOLD
+                       fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_24_BOLD
                                                   : FONT_KEY_GOTHIC_18_BOLD),
-                       GRect(margin, y, col_w, wide ? 30 : 24),
+                       GRect(margin, y, col_w, WIDE ? 30 : 24),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    y += wide ? 32 : 26;
+    y += WIDE ? 32 : 26;
     graphics_context_set_text_color(ctx, SC_COLOR_DIM);
     graphics_draw_text(ctx, S(STR_NO_PLAN_SUB),
-                       fonts_get_system_font(wide ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
+                       fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                        GRect(margin, y, col_w, b.size.h - y - 4),
                        GTextOverflowModeWordWrap, GTextAlignmentLeft, NULL);
     return;
   }
 
-  // Kopfzeile: wie viele noch offen sind
+  // Kopfzeile: wie viele noch offen sind. Bewusst leise - sie zählt nur, was
+  // die Liste darunter ohnehin zeigt, und die Liste ist das Eigentliche.
   const int open = plan_open_today();
-  int due = 0;
+  int due_idx[SC_MAX_ITEMS], n = 0;
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
-    if (plan_due_today(i)) due++;
+    if (plan_due_today(i)) due_idx[n++] = i;
   }
   char head[40];
-  if (due == 0) snprintf(head, sizeof(head), "%s", S(STR_NOTHING_DUE));
+  if (n == 0) snprintf(head, sizeof(head), "%s", S(STR_NOTHING_DUE));
   else if (open == 0) snprintf(head, sizeof(head), "%s", S(STR_ALL_DONE));
-  else snprintf(head, sizeof(head), S(STR_OPEN_FMT), open, due);
+  else snprintf(head, sizeof(head), S(STR_OPEN_FMT), open, n);
 
-  graphics_context_set_text_color(ctx, open == 0 ? SC_COLOR_DIM : SC_COLOR_TEXT);
+  graphics_context_set_text_color(ctx, SC_COLOR_DIM);
   graphics_draw_text(ctx, head,
-                     fonts_get_system_font(wide ? FONT_KEY_GOTHIC_18_BOLD
-                                                : FONT_KEY_GOTHIC_14_BOLD),
-                     GRect(margin, y, col_w, 24),
+                     fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
+                     GRect(margin, y, col_w, WIDE ? 22 : 18),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-  y += wide ? 26 : 22;
+  y += WIDE ? 24 : 19;
 
-  // Ein Eintrag je Zeile. Was heute nicht ansteht, steht gar nicht da - in der
-  // Pause will man nicht daran erinnert werden, dass man pausiert.
+  if (n == 0) return;
+
+  // Das Fenster der Liste der Auswahl nachziehen. Grosse Einträge heissen
+  // wenige sichtbare - ohne Nachziehen liefe die Auswahl unten hinaus und man
+  // wählte blind weiter.
   prv_fix_selection();
-  s_sel_y = -1;
-  for (int i = 0; i < SC_MAX_ITEMS && y < b.size.h - 8; i++) {
-    if (!plan_due_today(i)) continue;
+  int sel_pos = -1;
+  for (int k = 0; k < n; k++) {
+    if (due_idx[k] == s_sel) sel_pos = k;
+  }
+  const int vis = (b.size.h - y - 2) / ROW_H;
+  if (vis >= 1) {
+    if (sel_pos >= 0 && sel_pos < s_first) s_first = sel_pos;
+    if (sel_pos >= 0 && sel_pos > s_first + vis - 1) s_first = sel_pos - vis + 1;
+    if (s_first > n - vis) s_first = n - vis;
+  }
+  if (s_first < 0) s_first = 0;
+
+  for (int k = s_first; k < n && y + ROW_H <= b.size.h; k++) {
+    const int i = due_idx[k];
     const PlanItem *it = plan_item(i);
     const bool taken = plan_taken(i);
-    if (i == s_sel) s_sel_y = y + ROW_H / 2;
+    const GColor fg = taken ? SC_COLOR_DIM : SC_COLOR_TEXT;
 
-    if (taken) prv_draw_check(ctx, GPoint(margin, y + 4), 12);
-
-    char line[40];
-    snprintf(line, sizeof(line), "%02d:%02d  %s", it->hour, it->minute, it->name);
-    graphics_context_set_text_color(ctx, taken ? SC_COLOR_DIM : SC_COLOR_TEXT);
-    graphics_draw_text(ctx, line,
-                       fonts_get_system_font(taken ? FONT_KEY_GOTHIC_18
-                                                   : FONT_KEY_GOTHIC_18_BOLD),
-                       GRect(margin + (taken ? 20 : 0), y, col_w - (taken ? 20 : 0), ROW_H),
+    // Zeit in LECO, wie im Kopf eines Timeline-Eintrags
+    char when[8];
+    snprintf(when, sizeof(when), "%02d:%02d", it->hour, it->minute);
+    graphics_context_set_text_color(ctx, fg);
+    graphics_draw_text(ctx, when, fonts_get_system_font(FONT_KEY_LECO_20_BOLD_NUMBERS),
+                       GRect(margin, y, col_w, LINE_TIME + 4),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    // Der Haken steht neben der Zeit, nicht vor dem Namen: dort bliebe für
+    // "Multivitamin" in fetter 24er Schrift nichts mehr übrig.
+    if (taken) prv_draw_check(ctx, GPoint(margin + (WIDE ? 62 : 56), y + 4), 12);
+
+    graphics_draw_text(ctx, it->name,
+                       fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_24_BOLD
+                                                  : FONT_KEY_GOTHIC_18_BOLD),
+                       GRect(margin, y + LINE_TIME, col_w, LINE_NAME + 2),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+    char sub[40];
+    prv_sub_text(i, sub, sizeof(sub));
+    graphics_context_set_text_color(ctx, SC_COLOR_DIM);
+    graphics_draw_text(ctx, sub,
+                       fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
+                       GRect(margin, y + LINE_TIME + LINE_NAME, col_w, LINE_SUB + 2),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+    if (i == s_sel) prv_draw_arrow(ctx, b, y + ROW_H / 2);
     y += ROW_H;
   }
 }
 
+// Höhe einer Zeile in der Zyklusansicht, gross und klein. Die grosse ist so
+// knapp geschnitten, wie die 24er Schrift und ihr Untertitel es zulassen -
+// vier Präparate sind ein gewöhnlicher Stack, und die sollen gross dastehen.
+#define CYC_BIG    (WIDE ? 48 : 40)
+#define CYC_SMALL  (WIDE ? 40 : 34)
+
 static void prv_draw_cycle(GContext *ctx, GRect b) {
-  const bool wide = PBL_DISPLAY_WIDTH >= 180;
   const int16_t margin = SC_MARGIN;
   const int16_t col_w = b.size.w - SC_SIDEBAR_W - margin - 4;
-  int16_t y = PBL_IF_ROUND_ELSE(40, 16);
+  int16_t y = PBL_IF_ROUND_ELSE(30, 6);
 
-  graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
-  graphics_draw_text(ctx, S(STR_CYCLE), fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(margin, y, col_w, 18),
+  graphics_context_set_text_color(ctx, SC_COLOR_DIM);
+  graphics_draw_text(ctx, S(STR_CYCLE),
+                     fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
+                     GRect(margin, y, col_w, WIDE ? 22 : 18),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-  y += 18;
+  y += WIDE ? 24 : 19;
+
+  // Gross schreiben, solange ALLE hineinpassen - nicht bis zu einer geratenen
+  // Anzahl. Sonst steht das letzte Präparat gross da und sein Untertitel
+  // unter dem Bildrand, was schlimmer ist als eine Nummer kleiner.
+  const int rows = plan_count();
+  const int16_t avail = b.size.h - y - 2;
+  const bool big = rows > 0 && (avail / rows) >= CYC_BIG;
 
   for (int i = 0; i < SC_MAX_ITEMS && y < b.size.h - 8; i++) {
     const PlanItem *it = plan_item(i);
     if (!it || it->mode == PlanUnused) continue;
 
     graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
-    graphics_draw_text(ctx, it->name, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
-                       GRect(margin, y, col_w, 22),
+    graphics_draw_text(ctx, it->name,
+                       fonts_get_system_font(big ? FONT_KEY_GOTHIC_24_BOLD
+                                                 : FONT_KEY_GOTHIC_18_BOLD),
+                       GRect(margin, y, col_w, big ? 28 : 22),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    y += 20;
+    y += big ? CYC_BIG / 2 : CYC_SMALL / 2;
 
     char sub[48];
     if (it->mode == PlanDaily) {
@@ -173,10 +263,11 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
       else snprintf(sub, sizeof(sub), "%s", phase);
     }
     graphics_context_set_text_color(ctx, SC_COLOR_DIM);
-    graphics_draw_text(ctx, sub, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                       GRect(margin, y, col_w, 20),
+    graphics_draw_text(ctx, sub,
+                       fonts_get_system_font(big ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
+                       GRect(margin, y, col_w, big ? 22 : 18),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    y += wide ? 22 : 20;
+    y += big ? CYC_BIG - CYC_BIG / 2 : CYC_SMALL - CYC_SMALL / 2;
   }
 }
 
@@ -186,30 +277,17 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   if (s_playing) return;
   const GRect b = layer_get_bounds(layer);
 
-  // Kleine Uhrzeit oben, wie im Kopf eines Timeline-Eintrags
-  graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
-  char clock[10];
-  clock_copy_time_string(clock, sizeof(clock));
-  graphics_draw_text(ctx, clock, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(0, PBL_IF_ROUND_ELSE(10, 0), b.size.w - SC_SIDEBAR_W, 16),
-                     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-
+  // Keine kleine Uhrzeit mehr: die LISTE der Systemtimeline hat keine, nur
+  // das Pin-Detail. Die sechzehn Pixel gehören dem ersten Eintrag.
   if (s_cycle_view) prv_draw_cycle(ctx, b);
   else prv_draw_today(ctx, b);
 }
 
-// Ein Hinweis in der Seitenleiste, mittig um cy.
-//
-// Eingerückt wird NUR, wenn die Pfeilkerbe auf derselben Höhe liegt. Ein
-// pauschaler Einzug wäre ruhiger, kostete aber überall Platz: die Leiste misst
-// 30 bis 34 Pixel, und "Cycle" bricht dann zu "Cy...". Lieber weicht das eine
-// Wort aus, neben dem der Pfeil tatsächlich steht - das liest sich als Antwort
-// auf den Pfeil und nicht als Fehler.
+// Ein Hinweis in der Seitenleiste, mittig um cy. Über die volle Breite: der
+// Auswahlpfeil steht jetzt ausserhalb der Leiste und nimmt ihr nichts mehr weg.
 static void prv_hint(GContext *ctx, GRect b, const char *text, int16_t cy) {
-  const bool hit = (s_sel_y >= 0) && (s_sel_y - cy < 18) && (cy - s_sel_y < 18);
-  const int16_t x = hit ? NOTCH_W : 0;
   graphics_draw_text(ctx, text, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(x, cy - 9, b.size.w - x, 18),
+                     GRect(0, cy - 9, b.size.w, 18),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
@@ -220,8 +298,14 @@ static void prv_sidebar_update(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, b, 0, GCornerNone);
   graphics_context_set_text_color(ctx, SC_COLOR_ON_SIDEBAR);
 
+  // Auf der runden Uhr rücken der obere und der untere Hinweis zur Mitte: dort
+  // ist die Leiste breit. Auf Vierteln schneidet der Kreis sie zu "Cycl" und
+  // "Nex" ab - ein abgeschnittenes Wort ist schlimmer als ein enger Abstand.
+  const int16_t hy1 = PBL_IF_ROUND_ELSE(b.size.h * 34 / 100, b.size.h / 4);
+  const int16_t hy3 = PBL_IF_ROUND_ELSE(b.size.h * 66 / 100, b.size.h * 3 / 4);
+
   // Obere Taste: zwischen den Ansichten wechseln
-  prv_hint(ctx, b, s_cycle_view ? S(STR_HINT_BACK) : S(STR_HINT_CYCLE), b.size.h / 4);
+  prv_hint(ctx, b, s_cycle_view ? S(STR_HINT_BACK) : S(STR_HINT_CYCLE), hy1);
 
   if (!s_cycle_view) {
     // Mitteltaste: das Gewählte abhaken - oder den Haken zurücknehmen.
@@ -234,20 +318,7 @@ static void prv_sidebar_update(Layer *layer, GContext *ctx) {
       if (plan_due_today(i)) due++;
     }
     if (due > 1) {
-      prv_hint(ctx, b, S(STR_HINT_NEXT), b.size.h * 3 / 4);
-    }
-
-    // Weisse Pfeilkerbe am gewählten Eintrag, wie in der Timeline.
-    if (s_sel_y >= 0) {
-      GPoint pts[3] = { GPoint(0, s_sel_y - NOTCH_H), GPoint(NOTCH_W, s_sel_y),
-                        GPoint(0, s_sel_y + NOTCH_H) };
-      const GPathInfo info = { .num_points = 3, .points = pts };
-      GPath *notch = gpath_create(&info);
-      if (notch) {
-        graphics_context_set_fill_color(ctx, GColorWhite);
-        gpath_draw_filled(ctx, notch);
-        gpath_destroy(notch);
-      }
+      prv_hint(ctx, b, S(STR_HINT_NEXT), hy3);
     }
   }
 }
