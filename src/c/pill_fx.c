@@ -9,9 +9,13 @@
 //   0..POP_END     Kapsel ploppt mit Überschwingen auf, lächelt
 //   ..HOLD_END     kurz still
 //   ..SHAKE_END    sie wird geschüttelt und verzieht das Gesicht
-//   ..SMILE_END    ausgestanden, wieder Lächeln
+//   ..STILL_END    das Schütteln hört auf, die Miene BLEIBT
 //   ..SHRINK_END   Kapsel schrumpft ins Zentrum
 //   ..1000         Strahlenkranz dort, wo die Kapsel war
+//
+// Die verzogene Miene bleibt bis zum Schluss. Vorher lächelte die Kapsel
+// wieder, sobald das Schütteln aufhörte - das sah aus, als sei nichts
+// gewesen, und nahm dem Schütteln die Pointe.
 
 #ifndef FX_MS
 #define FX_MS 1400          // Gesamtdauer; Testbuilds können sie überschreiben
@@ -19,7 +23,7 @@
 #define POP_END     100
 #define HOLD_END    170
 #define SHAKE_END   560
-#define SMILE_END   640
+#define STILL_END   640
 #define SHRINK_END  780
 #define RAYS         12
 
@@ -39,6 +43,7 @@
 #define HALF_H 78
 
 static Layer *s_layer;
+static Layer *s_parent;     //< wem der Overlay gerade gehört
 static Animation *s_anim;
 static int32_t s_p;         // Fortschritt 0..1000
 static GPoint s_anchor;
@@ -230,8 +235,8 @@ static void prv_draw(Layer *layer, GContext *ctx) {
     const int32_t t = s_p * 1000 / POP_END;
     scale = t < 600 ? 1150 * prv_smooth(t * 1000 / 600) / 1000
                     : 1150 - 150 * (t - 600) / 400;
-  } else if (s_p >= SMILE_END && s_p < SHRINK_END) {
-    const int32_t t = (s_p - SMILE_END) * 1000 / (SHRINK_END - SMILE_END);
+  } else if (s_p >= STILL_END && s_p < SHRINK_END) {
+    const int32_t t = (s_p - STILL_END) * 1000 / (SHRINK_END - STILL_END);
     scale = 1000 - t * t / 1000;                                    // beschleunigt
   }
   prv_set_metrics(c, s_width, scale);
@@ -239,7 +244,9 @@ static void prv_draw(Layer *layer, GContext *ctx) {
   if (s_p < SHRINK_END) {
     // Das letzte Zwergenexemplar sparen wir uns - unter dieser Grösse ist es
     // nur noch ein Fleck, und der Strahlenkranz kommt ohnehin gleich.
-    const bool shaken = (s_p >= HOLD_END && s_p < SHAKE_END);
+    // Einmal geschüttelt, bleibt die Miene - auch während die Kapsel
+    // schrumpft. Nur die Bewegung hört bei SHAKE_END auf, nicht der Ausdruck.
+    const bool shaken = (s_p >= HOLD_END);
     if (scale > 60) prv_draw_pill(ctx, shaken ? FaceShaken : FaceSmile);
   } else {
     prv_draw_burst(ctx, (s_p - SHRINK_END) * 1000 / (1000 - SHRINK_END));
@@ -269,13 +276,25 @@ static void prv_stopped(Animation *animation, bool finished, void *context) {
 }
 
 void pill_fx_init(Layer *parent) {
+  if (!parent) return;
+  // Den alten zuerst weg: sonst bliebe er als Waise im Baum des anderen
+  // Fensters hängen und leckte bis zum App-Ende.
+  if (s_layer) {
+    layer_destroy(s_layer);
+    s_layer = NULL;
+  }
+  s_parent = parent;
   s_layer = layer_create(layer_get_bounds(parent));
   layer_set_update_proc(s_layer, prv_draw);
   layer_set_hidden(s_layer, true);
   layer_add_child(parent, s_layer);
 }
 
-void pill_fx_deinit(void) {
+void pill_fx_deinit(Layer *parent) {
+  // Gehört der Overlay inzwischen einem anderen Fenster, ist hier nichts zu
+  // tun. Sonst risse das entladende Fenster dem sichtbaren den Boden weg.
+  if (parent && s_parent && s_parent != parent) return;
+  s_parent = NULL;
   s_done = NULL;
   if (s_anim) {
     animation_unschedule(s_anim);
@@ -287,8 +306,16 @@ void pill_fx_deinit(void) {
   }
 }
 
-void pill_fx_play(GPoint anchor, int16_t width, PillFxDone done) {
-  if (s_anim || !s_layer) return;
+bool pill_fx_play(GPoint anchor, int16_t width, PillFxDone done) {
+  // Es läuft schon eine: der Aufrufer bekommt kein zweites Ende versprochen.
+  if (s_anim) return false;
+  if (!s_layer) {
+    // Kein Overlay - dann eben ohne Animation, aber MIT Meldung. Schwiege
+    // ich hier, wartet der Aufrufer ewig auf ein Ende, das nie kommt, und
+    // die App steht.
+    if (done) done();
+    return false;
+  }
   s_anchor = anchor;
   s_width = width;
   s_done = done;
@@ -300,11 +327,12 @@ void pill_fx_play(GPoint anchor, int16_t width, PillFxDone done) {
     // sonst ewig auf ein Ende, das nie kommt.
     s_done = NULL;
     if (done) done();
-    return;
+    return false;
   }
   animation_set_implementation(s_anim, &s_impl);
   animation_set_duration(s_anim, FX_MS);
   animation_set_handlers(s_anim, (AnimationHandlers) { .stopped = prv_stopped }, NULL);
   layer_set_hidden(s_layer, false);
   animation_schedule(s_anim);
+  return true;
 }

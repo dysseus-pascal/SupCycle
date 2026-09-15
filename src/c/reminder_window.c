@@ -143,8 +143,12 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
   layer_mark_dirty(s_canvas);
   action_bar_layer_remove_from_window(s_bar);
   const GRect b = layer_get_bounds(s_canvas);
-  pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),
-               (int16_t)(b.size.w * 34 / 100), prv_fx_done);
+  if (!pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),
+                    (int16_t)(b.size.w * 34 / 100), prv_fx_done)) {
+    // Kam nicht zustande: dann eben direkt hinaus, statt auf ein Ende zu
+    // warten, das nicht kommt.
+    prv_close();
+  }
 }
 
 static void prv_later(ClickRecognizerRef recognizer, void *context) {
@@ -164,7 +168,6 @@ static void prv_load(Window *window) {
   s_canvas = layer_create(layer_get_bounds(root));
   layer_set_update_proc(s_canvas, prv_canvas_update);
   layer_add_child(root, s_canvas);
-  pill_fx_init(s_canvas);
 
   s_bar = action_bar_layer_create();
   action_bar_layer_set_background_color(s_bar, SC_COLOR_SIDEBAR);
@@ -181,9 +184,16 @@ static void prv_load(Window *window) {
   prv_vibe_cb(NULL);
 }
 
+// Wie im Hauptfenster: der Overlay entsteht beim ERSCHEINEN. Beim Laden
+// angelegt, nähme er dem darunterliegenden Hauptschirm seinen weg, noch
+// bevor dieses Fenster überhaupt sichtbar ist.
+static void prv_appear(Window *window) {
+  pill_fx_init(s_canvas);
+}
+
 static void prv_unload(Window *window) {
   prv_stop_vibes();
-  pill_fx_deinit();
+  pill_fx_deinit(s_canvas);
   action_bar_layer_destroy(s_bar);
   if (s_icon_take) { gbitmap_destroy(s_icon_take); s_icon_take = NULL; }
   if (s_icon_later) { gbitmap_destroy(s_icon_later); s_icon_later = NULL; }
@@ -203,7 +213,7 @@ void reminder_window_push(int minute) {
   s_window = window_create();
   window_set_background_color(s_window, SC_COLOR_BG);
   window_set_window_handlers(s_window, (WindowHandlers) {
-    .load = prv_load, .unload = prv_unload,
+    .load = prv_load, .appear = prv_appear, .unload = prv_unload,
   });
   window_stack_push(s_window, true);
 }

@@ -72,9 +72,6 @@ void plan_set_taken(int index, bool taken);
 // Wie viele der heute fälligen sind noch offen.
 int plan_open_today(void);
 
-// Nächster heute fälliger und noch offener Eintrag, -1 wenn keiner.
-int plan_next_open(void);
-
 // Sind ALLE heute fälligen Einträge zur selben Uhrzeit wie `index` genommen?
 //
 // Kreatin und Vitamine stehen beide auf acht Uhr - das ist EINE Einnahme,

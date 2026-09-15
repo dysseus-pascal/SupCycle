@@ -143,6 +143,19 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   }
 
   if (memcmp(fresh, s_items, sizeof(s_items)) == 0) return false;
+
+  // Die Haken hängen am PLATZ, nicht am Präparat: s_taken ist eine Bitmaske
+  // über die Indizes. Steht auf einem Platz plötzlich ein anderer Name, gilt
+  // sein Haken nicht mehr - sonst stünde das neue Präparat ungefragt als
+  // genommen da. Das ist schlimmer als ein fehlender Haken: es behauptet eine
+  // Einnahme, die nie stattgefunden hat.
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (strncmp(fresh[i].name, s_items[i].name, SC_NAME_LEN) != 0) {
+      s_taken &= (uint8_t)~(1u << i);
+    }
+  }
+  persist_write_int(PERSIST_TAKEN, s_taken);
+
   memcpy(s_items, fresh, sizeof(s_items));
   persist_write_data(PERSIST_PLAN, data, len < sizeof(s_items) ? len : (uint16_t)sizeof(s_items));
   APP_LOG(APP_LOG_LEVEL_INFO, "Plan uebernommen: %d Eintraege", plan_count());
@@ -219,9 +232,3 @@ bool plan_slot_complete(int index) {
   return true;
 }
 
-int plan_next_open(void) {
-  for (int i = 0; i < SC_MAX_ITEMS; i++) {
-    if (plan_due_today(i) && !plan_taken(i)) return i;
-  }
-  return -1;
-}

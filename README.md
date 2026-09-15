@@ -67,12 +67,23 @@ anzuschreiben und seinen Untertitel unter den Bildrand zu schieben.
 
 Ein Bildschirm, zwei Ansichten.
 
-| Taste | Aktion |
-|---|---|
-| Oben | zwischen **Heute** und **Zyklus** wechseln |
-| Mitte | das Gewählte abhaken — nochmal drücken nimmt den Haken zurück |
-| Unten | den nächsten Eintrag wählen |
-| Zurück | App verlassen |
+| Taste | In **Heute** | In **Zyklus** |
+|---|---|---|
+| Oben | einen Eintrag zurück | eine Zeile hoch |
+| Unten | einen Eintrag weiter | eine Zeile runter |
+| Mitte | abhaken — nochmal drücken nimmt den Haken zurück | zurück nach Heute |
+| Mitte **lang** | zur Zyklusansicht | zurück nach Heute |
+| Zurück | App verlassen | App verlassen |
+
+Oben und unten tun in beiden Ansichten dasselbe: sie bewegen sich durch die
+Liste. Vorher lag der Ansichtswechsel auf der oberen Taste — die wird jetzt
+fürs Wählen gebraucht, und eine Ansicht, die man zweimal am Tag aufruft,
+verdient keine eigene Taste.
+
+Der lange Druck meldet sich, sobald die Haltezeit erreicht ist, nicht erst
+beim Loslassen — so bestätigt der Schirm den Wechsel, während der Finger noch
+liegt. Die Haltezeit ist die Systemvorgabe (500 ms); eine eigene Zahl hiesse,
+dass sich diese App anders anfühlt als die anderen auf der Uhr.
 
 Die Auswahl zeigt einen **Pfeil in der Farbe der Seitenleiste**, der nach links
 auf den Eintrag hinausragt — genau wie in der Systemtimeline.
@@ -82,12 +93,47 @@ Drinktervall: ein getrunkenes Glas lässt sich nicht ungetrunken machen, ein
 Fehlgriff auf der Uhr aber sehr wohl. Und ein falscher Haken im Plan ist
 schlimmer als keiner — er sagt, man habe genommen, was man nicht genommen hat.
 
-Die Hinweise in der Seitenleiste bleiben klein. Sie stehen in einer 34 Pixel
-schmalen Spalte, und „Cycle" bricht dort in jeder grösseren Schrift um. Wichtig
-ist, was links steht; die Leiste ist Beiwerk.
+Oben und unten stehen in der Seitenleiste **Dreiecke, keine Wörter**. „Hoch"
+und „Weiter" wären zwei Wörter für dieselbe Sache in zwei Richtungen, und in
+einer 34 Pixel schmalen Spalte ist jedes Wort eines zu viel — die
+Systemtimeline schreibt dort gar nichts. Sie erscheinen nur, wenn es etwas zu
+blättern gibt: ein Zeichen für eine Taste, die nichts tut, ist schlimmer als
+keines.
+
+In der Mitte steht weiter ein Wort, und das bleibt klein: in dieser Spalte
+bricht jede grössere Schrift um. Wichtig ist, was links steht; die Leiste ist
+Beiwerk.
+
+Die Zyklusliste blättert, wenn nicht alle Präparate auf einen Schirm passen —
+bei sechs Einträgen ist das der Fall. Vorher fiel das letzte einfach unter den
+Bildrand. Auf der **runden** Uhr endet der Platz früher, als die Bildhöhe sagt:
+bei x = 38 reicht der Kreis nur von y 38 bis 222, nicht bis 260. Wer gegen die
+Rechteckhöhe misst, schreibt die letzte Zeile hinter die Rundung.
+
+## Ein Overlay, zwei Fenster
+
+Pilly liegt als eigener Layer über dem Fenster, und es gibt davon **genau
+einen** für die ganze App. Das ist eine Falle, denn ein Wecker schiebt das
+Erinnerungsfenster über den Hauptschirm — beide wollen ihn.
+
+Der Overlay hat deshalb einen **Besitzer**. Er entsteht, wenn ein Fenster
+*erscheint*, nicht wenn es lädt; und ein Fenster räumt ihn beim Entladen nur
+weg, wenn er noch ihm gehört. Beide Reihenfolgen gehen damit auf: ob das
+Erinnerungsfenster zuerst entlädt oder der Hauptschirm zuerst wieder erscheint,
+am Ende hat der sichtbare Schirm seinen Overlay.
+
+Und `pill_fx_play` **meldet**, wenn es nicht spielen kann, statt stillschweigend
+zurückzukehren. Vorher setzte der Aufrufer "es läuft eine Animation", bekam nie
+ein Ende gemeldet und blockierte sich selbst für immer: weisser Schirm, alle
+Tasten tot. Ein Ende, das nicht kommt, ist schlimmer als gar keine Animation.
 
 Beim Abhaken spielt **Pilly** — auf dem Heute-Schirm wie im Erinnerungsfenster.
 Beim Zurücknehmen nicht: eine Feier für einen Fehlgriff wäre verkehrt herum.
+
+Wird sie geschüttelt, **bleibt die verzogene Miene bis zum Schluss** — auch
+während die Kapsel schrumpft. Vorher lächelte sie wieder, sobald das Schütteln
+aufhörte; das sah aus, als sei nichts gewesen, und nahm dem Schütteln die
+Pointe.
 
 Gefeiert wird die **Einnahme, nicht die einzelne Tablette**. Stehen Kreatin und
 Vitamine beide auf acht Uhr, ist das ein Termin und nicht zwei — Pilly spielt

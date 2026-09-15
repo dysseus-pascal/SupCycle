@@ -9,9 +9,13 @@
 // Ein Fenster, zwei Ansichten — mehr braucht es nicht:
 //
 //   HEUTE    was ansteht, mit Haken bei dem, was schon genommen ist.
-//            Untere Taste wählt, Mitteltaste hakt das Gewählte ab.
-//   ZYKLUS   für jedes Präparat die laufende Phase. Obere Taste wechselt hin
-//            und zurück.
+//            Oben und unten wählen, die Mitteltaste hakt das Gewählte ab.
+//   ZYKLUS   für jedes Präparat die laufende Phase. Oben und unten blättern,
+//            die Mitteltaste geht zurück nach Heute.
+//
+// Gewechselt wird mit einem LANGEN Druck auf die Mitteltaste. Vorher lag der
+// Wechsel auf der oberen Taste - die wird jetzt fürs Wählen gebraucht, und
+// eine Ansicht, die man zweimal am Tag aufruft, verdient keine eigene Taste.
 //
 // HEUTE ist der Liste der Systemtimeline nachgebaut - nicht aus dem
 // Gedächtnis, sondern nach einem Emulator-Screenshot von ihr: LECO-Zeit,
@@ -34,6 +38,17 @@
 #define LINE_SUB   (WIDE ? 20 : 16)
 #define ROW_H      (LINE_TIME + LINE_NAME + LINE_SUB + (WIDE ? 4 : 0))
 
+// Die Zyklusliste: wo sie beginnt, wie hoch ihr Kopf ist, und wie viel Platz
+// unten frei bleiben muss.
+#define CYC_TOP    PBL_IF_ROUND_ELSE(40, 6)
+#define CYC_HEAD   (WIDE ? 24 : 19)
+
+// Abstand vom unteren Rand. Auf der RUNDEN Uhr ist der Schirm ein Kreis: bei
+// x = SC_MARGIN (38) reicht er nur von y 38 bis 222, nicht bis 260. Wer gegen
+// die Rechteckhöhe misst, schreibt die letzte Zeile hinter die Rundung. Gilt
+// für beide Listen - die Rundung kennt den Unterschied nicht.
+#define CYC_BOT    PBL_IF_ROUND_ELSE(40, 2)
+
 // Die Pfeilspitze der Auswahl. Sitzt mit der Grundlinie auf der linken Kante
 // der Leiste und zeigt nach links auf den Eintrag.
 //
@@ -51,6 +66,7 @@ static bool s_cycle_view;
 
 static int s_sel;            // gewählter Eintrag, Index in den Plan
 static int s_first;          // erster sichtbarer Eintrag, Position in der Fälligenliste
+static int s_cyc_first;      // dasselbe für die Zyklusliste
 static bool s_playing;       // läuft gerade die Genommen-Animation?
 
 // Haken, von Hand gezeichnet: zwei Striche. Ein Bildsymbol dafür wäre eine
@@ -134,10 +150,13 @@ static void prv_fix_selection(void) {
   s_sel = -1;
 }
 
-// Nächster heute fälliger Eintrag nach dem gewählten, rundum.
-static void prv_select_next(void) {
+// Einen heute fälligen Eintrag weiter, rundum. dir = +1 nach unten, -1 nach oben.
+//
+// Der doppelte Modulo ist kein Zierrat: in C ergibt -1 % 6 die Zahl -1, nicht 5.
+// Ohne ihn liefe die obere Taste beim ersten Eintrag ins Leere.
+static void prv_select_step(int dir) {
   for (int step = 1; step <= SC_MAX_ITEMS; step++) {
-    const int i = (s_sel + step + SC_MAX_ITEMS) % SC_MAX_ITEMS;
+    const int i = (((s_sel + dir * step) % SC_MAX_ITEMS) + SC_MAX_ITEMS) % SC_MAX_ITEMS;
     if (plan_due_today(i)) { s_sel = i; return; }
   }
 }
@@ -197,7 +216,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
   for (int k = 0; k < n; k++) {
     if (due_idx[k] == s_sel) sel_pos = k;
   }
-  const int vis = (b.size.h - y - 2) / ROW_H;
+  const int vis = (b.size.h - y - CYC_BOT) / ROW_H;
   if (vis >= 1) {
     if (sel_pos >= 0 && sel_pos < s_first) s_first = sel_pos;
     if (sel_pos >= 0 && sel_pos > s_first + vis - 1) s_first = sel_pos - vis + 1;
@@ -205,7 +224,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
   }
   if (s_first < 0) s_first = 0;
 
-  for (int k = s_first; k < n && y + ROW_H <= b.size.h; k++) {
+  for (int k = s_first; k < n && y + ROW_H <= b.size.h - CYC_BOT; k++) {
     const int i = due_idx[k];
     const PlanItem *it = plan_item(i);
     const bool taken = plan_taken(i);
@@ -252,28 +271,53 @@ static void prv_draw_today(GContext *ctx, GRect b) {
 #define CYC_BIG    (WIDE ? 48 : 40)
 #define CYC_SMALL  (WIDE ? 40 : 34)
 
+// Wo die Zyklusliste beginnt und wie viel Platz sie hat - beide Schichten
+// rechnen mit denselben Zahlen, damit die Seitenleiste nicht anders urteilt
+// als die Liste selbst.
+// Passen nicht alle Präparate auf einen Schirm? Dann blättern oben und unten.
+static int prv_cyc_rows(int16_t h) {
+  const int rows = plan_count();
+  if (rows < 1) return 0;
+  const int16_t avail = h - CYC_TOP - CYC_HEAD - CYC_BOT;
+  const int16_t row = (avail / rows >= CYC_BIG) ? CYC_BIG : CYC_SMALL;
+  const int fit = avail / row;
+  return fit < 1 ? 1 : fit;
+}
+
 static void prv_draw_cycle(GContext *ctx, GRect b) {
   const int16_t margin = SC_MARGIN;
   const int16_t col_w = b.size.w - SC_SIDEBAR_W - margin - 4;
-  int16_t y = PBL_IF_ROUND_ELSE(30, 6);
+  int16_t y = CYC_TOP;
 
   graphics_context_set_text_color(ctx, SC_COLOR_SUB);
   graphics_draw_text(ctx, S(STR_CYCLE),
                      fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                      GRect(margin, y, col_w, WIDE ? 22 : 18),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-  y += WIDE ? 24 : 19;
+  y += CYC_HEAD;
 
   // Gross schreiben, solange ALLE hineinpassen - nicht bis zu einer geratenen
   // Anzahl. Sonst steht das letzte Präparat gross da und sein Untertitel
   // unter dem Bildrand, was schlimmer ist als eine Nummer kleiner.
-  const int rows = plan_count();
-  const int16_t avail = b.size.h - y - 2;
-  const bool big = rows > 0 && (avail / rows) >= CYC_BIG;
-
-  for (int i = 0; i < SC_MAX_ITEMS && y < b.size.h - 8; i++) {
+  int used[SC_MAX_ITEMS], n = 0;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
     const PlanItem *it = plan_item(i);
-    if (!it || !it->used) continue;
+    if (it && it->used) used[n++] = i;
+  }
+  if (n == 0) return;
+
+  const int16_t avail = b.size.h - y - CYC_BOT;
+  const bool big = (avail / n) >= CYC_BIG;
+  const int16_t row_h = big ? CYC_BIG : CYC_SMALL;
+
+  // Fenster: passt nicht alles, blättern die Tasten durch.
+  const int vis = prv_cyc_rows(b.size.h);
+  if (s_cyc_first > n - vis) s_cyc_first = n - vis;
+  if (s_cyc_first < 0) s_cyc_first = 0;
+
+  for (int k = s_cyc_first; k < n && y + row_h <= b.size.h - CYC_BOT; k++) {
+    const PlanItem *it = plan_item(used[k]);
+    if (!it) continue;
 
     graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
     graphics_draw_text(ctx, it->name,
@@ -281,17 +325,15 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
                                                  : FONT_KEY_GOTHIC_18_BOLD),
                        GRect(margin, y, col_w, big ? 28 : 22),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    y += big ? CYC_BIG / 2 : CYC_SMALL / 2;
 
     char sub[64];
-    const CycleState probe = plan_cycle(i);
-    if (probe.of_weeks == 0) {
+    const CycleState c = plan_cycle(used[k]);
+    if (c.of_weeks == 0) {
       // Unbegrenzt: Raster nennen und dazusagen, dass es keine Pause gibt.
       char ev[32];
       prv_every_text(it->every, ev, sizeof(ev));
       snprintf(sub, sizeof(sub), "%s, %s", ev, S(STR_UNLIMITED));
     } else {
-      const CycleState c = plan_cycle(i);
       char phase[32];
       if (c.phase == CyclePhaseOn) {
         snprintf(phase, sizeof(phase), S(STR_ON_FMT), c.week, c.of_weeks);
@@ -307,9 +349,9 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
     graphics_context_set_text_color(ctx, SC_COLOR_SUB);
     graphics_draw_text(ctx, sub,
                        fonts_get_system_font(big ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
-                       GRect(margin, y, col_w, big ? 22 : 18),
+                       GRect(margin, y + (big ? 26 : 20), col_w, big ? 22 : 18),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    y += big ? CYC_BIG - CYC_BIG / 2 : CYC_SMALL - CYC_SMALL / 2;
+    y += row_h;
   }
 }
 
@@ -323,6 +365,22 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   // das Pin-Detail. Die sechzehn Pixel gehören dem ersten Eintrag.
   if (s_cycle_view) prv_draw_cycle(ctx, b);
   else prv_draw_today(ctx, b);
+}
+
+// Ein kleines gefülltes Dreieck in der Seitenleiste: oben "vorheriger",
+// unten "nächster". Weiss auf der dunklen Leiste, wie die Hinweise.
+static void prv_chevron(GContext *ctx, GRect b, int16_t cy, bool up) {
+  const int16_t w = 11, h = 6;
+  const int16_t cx = b.size.w / 2;
+  const int16_t base = up ? cy + h / 2 : cy - h / 2;
+  const int16_t tip = up ? cy - h / 2 : cy + h / 2;
+  GPoint pts[3] = { GPoint(cx - w / 2, base), GPoint(cx + w / 2, base), GPoint(cx, tip) };
+  const GPathInfo info = { .num_points = 3, .points = pts };
+  GPath *tri = gpath_create(&info);
+  if (!tri) return;
+  graphics_context_set_fill_color(ctx, SC_COLOR_ON_SIDEBAR);
+  gpath_draw_filled(ctx, tri);
+  gpath_destroy(tri);
 }
 
 // Ein Hinweis in der Seitenleiste, mittig um cy. Über die volle Breite: der
@@ -340,28 +398,46 @@ static void prv_sidebar_update(Layer *layer, GContext *ctx) {
   graphics_fill_rect(ctx, b, 0, GCornerNone);
   graphics_context_set_text_color(ctx, SC_COLOR_ON_SIDEBAR);
 
-  // Auf der runden Uhr rücken der obere und der untere Hinweis zur Mitte: dort
-  // ist die Leiste breit. Auf Vierteln schneidet der Kreis sie zu "Cycl" und
-  // "Nex" ab - ein abgeschnittenes Wort ist schlimmer als ein enger Abstand.
+  // Auf der runden Uhr rücken die Zeichen oben und unten zur Mitte: dort ist
+  // die Leiste breit. Auf Vierteln schneidet der Kreis sie an.
   const int16_t hy1 = PBL_IF_ROUND_ELSE(b.size.h * 34 / 100, b.size.h / 4);
   const int16_t hy3 = PBL_IF_ROUND_ELSE(b.size.h * 66 / 100, b.size.h * 3 / 4);
 
-  // Obere Taste: zwischen den Ansichten wechseln
-  prv_hint(ctx, b, s_cycle_view ? S(STR_HINT_BACK) : S(STR_HINT_CYCLE), hy1);
+  // Oben und unten stehen DREIECKE, keine Wörter. "Hoch" und "Weiter" wären
+  // zwei Wörter für dieselbe Sache in zwei Richtungen, und in einer 34 Pixel
+  // schmalen Spalte ist jedes Wort eines zu viel. Die Systemtimeline schreibt
+  // dort gar nichts.
+  //
+  // Sie erscheinen nur, wenn es etwas zu blättern gibt: ein Zeichen für eine
+  // Taste, die nichts tut, ist schlimmer als keines.
+  if (s_cycle_view) {
+    // Mitteltaste führt zurück nach Heute - kurz wie lang.
+    prv_hint(ctx, b, S(STR_HINT_BACK), b.size.h / 2);
+    // Anders als in HEUTE läuft das Blättern hier NICHT rundum. Am oberen
+    // Ende tut die obere Taste nichts, am unteren die untere - dann gehört
+    // dort auch kein Zeichen hin.
+    if (s_canvas) {
+      const int vis = prv_cyc_rows(layer_get_bounds(s_canvas).size.h);
+      if (s_cyc_first > 0) prv_chevron(ctx, b, hy1, true);
+      if (s_cyc_first + vis < plan_count()) prv_chevron(ctx, b, hy3, false);
+    }
+    return;
+  }
 
-  if (!s_cycle_view) {
-    // Mitteltaste: das Gewählte abhaken - oder den Haken zurücknehmen.
-    if (s_sel >= 0) {
-      prv_hint(ctx, b, plan_taken(s_sel) ? S(STR_HINT_UNDO) : S(STR_HINT_TAKE), b.size.h / 2);
-    }
-    // Untere Taste: weiterwählen. Nur wenn es überhaupt etwas zu wählen gibt.
-    int due = 0;
-    for (int i = 0; i < SC_MAX_ITEMS; i++) {
-      if (plan_due_today(i)) due++;
-    }
-    if (due > 1) {
-      prv_hint(ctx, b, S(STR_HINT_NEXT), hy3);
-    }
+  // Die Auswahl AUCH hier geraderücken. Die Liste tut es zwar, steigt aber
+  // vorher aus, wenn kein Plan da ist oder heute nichts ansteht - dann stünde
+  // hier "Nehmen" für eine Taste, die nichts tut.
+  prv_fix_selection();
+  if (s_sel >= 0) {
+    prv_hint(ctx, b, plan_taken(s_sel) ? S(STR_HINT_UNDO) : S(STR_HINT_TAKE), b.size.h / 2);
+  }
+  int due = 0;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (plan_due_today(i)) due++;
+  }
+  if (due > 1) {
+    prv_chevron(ctx, b, hy1, true);
+    prv_chevron(ctx, b, hy3, false);
   }
 }
 
@@ -377,7 +453,12 @@ static void prv_fx_done(void) {
 }
 
 static void prv_select(ClickRecognizerRef recognizer, void *context) {
-  if (s_cycle_view || s_playing) return;
+  if (s_playing) return;
+  // In der Zyklusansicht hat die Mitteltaste sonst nichts zu tun - dann führt
+  // sie zurück. So stimmt auch der Hinweis "Heute" daneben, der bei einem
+  // reinen Langdruck-Wechsel eine kurze Taste versprochen hätte, die es
+  // nicht gibt.
+  if (s_cycle_view) { s_cycle_view = false; main_window_refresh(); return; }
   prv_fix_selection();
   if (s_sel < 0) return;
   const bool taken = plan_taken(s_sel);
@@ -395,26 +476,50 @@ static void prv_select(ClickRecognizerRef recognizer, void *context) {
   if (!taken && prefs_fx() && plan_slot_complete(s_sel)) {
     s_playing = true;
     const GRect b = layer_get_bounds(s_canvas);
-    pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),
-                 (int16_t)(b.size.w * 34 / 100), prv_fx_done);
+    if (!pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),
+                      (int16_t)(b.size.w * 34 / 100), prv_fx_done)) {
+      s_playing = false;   // kam nicht zustande - dann eben ohne
+    }
   }
   main_window_refresh();
 }
 
-static void prv_up(ClickRecognizerRef recognizer, void *context) {
-  s_cycle_view = !s_cycle_view;
+// Oben und unten bewegen sich durch die Liste - in beiden Ansichten dieselbe
+// Geste, nur mit verschiedenem Gegenstand.
+static void prv_step(int dir) {
+  if (s_playing) return;
+  if (s_cycle_view) {
+    s_cyc_first += dir;
+    if (s_cyc_first < 0) s_cyc_first = 0;   // obere Grenze setzt das Zeichnen
+  } else {
+    prv_fix_selection();
+    prv_select_step(dir);
+  }
   main_window_refresh();
 }
 
-static void prv_down(ClickRecognizerRef recognizer, void *context) {
-  if (s_cycle_view) return;
-  prv_fix_selection();
-  prv_select_next();
+static void prv_up(ClickRecognizerRef recognizer, void *context) { prv_step(-1); }
+static void prv_down(ClickRecognizerRef recognizer, void *context) { prv_step(1); }
+
+// Langer Druck auf die Mitteltaste: Ansicht wechseln.
+//
+// Gemeldet wird beim Erreichen der Haltezeit, nicht beim Loslassen - so
+// bestätigt der Schirm den Wechsel, während der Finger noch liegt. Das kurze
+// Klopfen sagt zusätzlich, dass die Taste verstanden wurde.
+static void prv_long_select(ClickRecognizerRef recognizer, void *context) {
+  if (s_playing) return;
+  s_cycle_view = !s_cycle_view;
+  s_cyc_first = 0;
+  vibes_short_pulse();
   main_window_refresh();
 }
 
 static void prv_click_config(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_select);
+  // 0 heisst Systemvorgabe (500 ms) - dieselbe Haltezeit wie überall sonst
+  // auf der Uhr. Eine eigene Zahl hier hiesse, dass sich diese App anders
+  // anfuehlt als die anderen.
+  window_long_click_subscribe(BUTTON_ID_SELECT, 0, prv_long_select, NULL);
   window_single_click_subscribe(BUTTON_ID_UP, prv_up);
   window_single_click_subscribe(BUTTON_ID_DOWN, prv_down);
 }
@@ -433,14 +538,24 @@ static void prv_load(Window *window) {
                                  SC_SIDEBAR_W, bounds.size.h));
   layer_set_update_proc(s_sidebar, prv_sidebar_update);
   layer_add_child(root, s_sidebar);
-  // Zuletzt, damit die Animation über allem liegt.
-  pill_fx_init(root);
   tick_timer_service_subscribe(MINUTE_UNIT, prv_tick);
+}
+
+// Der Overlay wird beim ERSCHEINEN angelegt, nicht beim Laden.
+//
+// Ein Wecker schiebt das Erinnerungsfenster über diesen Schirm; dessen
+// Entladen räumt den gemeinsamen Overlay weg. Kommt dieser Schirm danach
+// wieder nach oben, legt er ihn hier neu an - sonst stünde er ohne da und
+// die nächste Animation käme nie zustande.
+static void prv_appear(Window *window) {
+  pill_fx_init(window_get_root_layer(window));
+  s_playing = false;   // eine abgebrochene Animation hält den Schirm nicht fest
+  main_window_refresh();
 }
 
 static void prv_unload(Window *window) {
   tick_timer_service_unsubscribe();
-  pill_fx_deinit();
+  pill_fx_deinit(window_get_root_layer(window));
   s_playing = false;
   layer_destroy(s_sidebar);
   layer_destroy(s_canvas);
@@ -461,7 +576,7 @@ void main_window_push(void) {
   window_set_background_color(s_window, SC_COLOR_BG);
   window_set_click_config_provider(s_window, prv_click_config);
   window_set_window_handlers(s_window, (WindowHandlers) {
-    .load = prv_load, .unload = prv_unload,
+    .load = prv_load, .appear = prv_appear, .unload = prv_unload,
   });
   window_stack_push(s_window, true);
 }
