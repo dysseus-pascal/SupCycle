@@ -1,5 +1,6 @@
 #include "phone.h"
 #include "plan.h"
+#include "prefs.h"
 #include "strings.h"
 
 // Sechs Eintraege zu je 25 Byte plus Kopf. 256 laesst Luft.
@@ -9,7 +10,29 @@
 static void (*s_observer)(void);
 static AppTimer *s_retry;
 
+// Eine Zahl aus einem Tupel, unabhaengig davon, wie breit sie ankam.
+// Ein int32 von einem Ein-Byte-Tupel zu lesen ergaebe Unsinn, und die
+// Telefonseite bestimmt die Breite nicht - das tut die Bibliothek.
+static int32_t prv_tuple_int(const Tuple *t) {
+  if (t->type == TUPLE_INT) {
+    if (t->length == 1) return t->value->int8;
+    if (t->length == 2) return t->value->int16;
+    return t->value->int32;
+  }
+  if (t->type == TUPLE_UINT) {
+    if (t->length == 1) return t->value->uint8;
+    if (t->length == 2) return t->value->uint16;
+    return (int32_t)t->value->uint32;
+  }
+  return 0;
+}
+
 static void prv_inbox(DictionaryIterator *iter, void *context) {
+  // ZUERST die Einstellungen: sie kommen mit derselben Nachricht wie der
+  // Plan, und ein Rueckspringen weiter unten wuerde sie verschlucken.
+  Tuple *fx = dict_find(iter, MESSAGE_KEY_FX);
+  if (fx) prefs_set_fx(prv_tuple_int(fx) != 0);
+
   Tuple *plan = dict_find(iter, MESSAGE_KEY_PLAN);
   if (!plan || plan->type != TUPLE_BYTE_ARRAY) return;
   if (plan_set_from_bytes(plan->value->data, plan->length) && s_observer) {

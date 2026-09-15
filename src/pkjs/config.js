@@ -24,6 +24,8 @@ var TEXT = [
     name: 'Name',
     namePlaceholder: 'z. B. Multivitamin',
     time: 'Wann',
+    fx: 'Animation beim Abhaken',
+    fxHint: 'Pilly, die Kapsel, spielt wenn alles zu einer Uhrzeit erledigt ist',
     every: 'Alle wie viel Tage',
     everyHint: '1 = täglich',
     weeksOn: 'Wochen Einnahme',
@@ -46,6 +48,8 @@ var TEXT = [
     name: 'Name',
     namePlaceholder: 'e.g. multivitamin',
     time: 'When',
+    fx: 'Animation when ticking off',
+    fxHint: 'Pilly the capsule plays once everything at one time is done',
     every: 'Every how many days',
     everyHint: '1 = daily',
     weeksOn: 'Weeks on',
@@ -158,6 +162,15 @@ module.exports = function (lang) {
       label: t.count,
       defaultValue: '2',
       options: numberOptions(1, SLOTS)
+    },
+    {
+      // Ganz oben und nicht je Platz: die Animation gehört zur App, nicht
+      // zum einzelnen Präparat.
+      type: 'toggle',
+      messageKey: 'FX',
+      label: t.fx,
+      description: t.fxHint,
+      defaultValue: true
     }
   ];
   for (var i = 0; i < SLOTS; i++) page.push(slotSection(t, i));

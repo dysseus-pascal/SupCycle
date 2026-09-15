@@ -2,6 +2,7 @@
 #include "theme.h"
 #include "phone.h"
 #include "plan.h"
+#include "prefs.h"
 #include "pill_fx.h"
 #include "remind.h"
 #include "strings.h"
@@ -133,6 +134,10 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
   // klopfen, falls noch ein Wecker auf dieselbe Minute steht.
   remind_schedule(0);
   phone_send_today();     // Pins als erledigt markieren
+
+  // Abgeschaltete Animation heisst NICHT, dass das Fenster stehen bleibt:
+  // prv_fx_done ist der Weg hinaus, also hier direkt gehen.
+  if (!prefs_fx()) { prv_close(); return; }
 
   s_playing = true;
   layer_mark_dirty(s_canvas);

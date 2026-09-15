@@ -206,6 +206,19 @@ int plan_open_today(void) {
   return n;
 }
 
+bool plan_slot_complete(int index) {
+  const PlanItem *it = plan_item(index);
+  if (!it || !it->used) return true;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    const PlanItem *o = plan_item(i);
+    if (!o || !o->used) continue;
+    if (o->hour != it->hour || o->minute != it->minute) continue;
+    if (!plan_due_today(i)) continue;
+    if (!plan_taken(i)) return false;
+  }
+  return true;
+}
+
 int plan_next_open(void) {
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (plan_due_today(i) && !plan_taken(i)) return i;

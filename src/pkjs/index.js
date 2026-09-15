@@ -18,6 +18,7 @@ var NAME_BYTES = 16;        // muss zu SC_NAME_LEN in src/c/plan.h passen
 var ITEM_BYTES = 26;        // muss zu SC_ITEM_BYTES passen
 var PLAN_KEY = 'supcycle_plan';
 var ITEMS_KEY = 'supcycle_items';
+var FX_KEY = 'supcycle_fx';       // '1' oder '0'; fehlt = an
 var LANG_KEY = 'supcycle_lang';
 
 // Ein leerer Platz steht mit 0 im Byte 18. Frueher sagte dort ein Modus,
@@ -184,8 +185,28 @@ function buildPlan(dict) {
   return { bytes: bytes, used: used, items: items };
 }
 
-function sendPlan(bytes, why) {
-  Pebble.sendAppMessage({ PLAN: bytes },
+// Der Schalter aus der Antwort der Konfigseite. Ein Umschalter kommt je nach
+// Fassung als true/false oder als 1/0 zurueck - beides gilt, und fehlt er,
+// bleibt die Animation an.
+function readFx(dict) {
+  var t = dict && dict.FX;
+  if (!t || t.value === undefined || t.value === null || t.value === '') return true;
+  var v = t.value;
+  if (v === false || v === 0 || v === '0' || v === 'false') return false;
+  return true;
+}
+
+function storedFx() {
+  try { return localStorage.getItem(FX_KEY) !== '0'; } catch (e) { return true; }
+}
+
+function sendPlan(bytes, why, fx) {
+  // Die Einstellung reist mit dem Plan. Eine eigene Nachricht dafuer waere
+  // eine zweite Gelegenheit, unterwegs verloren zu gehen - und der Postausgang
+  // fasst ohnehin nur eine auf einmal.
+  var msg = { PLAN: bytes };
+  if (fx !== undefined) msg.FX = fx ? 1 : 0;
+  Pebble.sendAppMessage(msg,
     function () { console.log('Plan geschickt (' + why + ')'); },
     function () { console.log('Plan nicht zugestellt (' + why + ') - Uhr laeuft wohl nicht'); });
 }
@@ -374,12 +395,15 @@ Pebble.addEventListener('webviewclosed', function (e) {
   // ein Block gebaut, und der geht als eines hinaus.
   var dict = getClay().getSettings(e.response, false);
   var plan = buildPlan(dict);
+  var fx = readFx(dict);
   try {
     localStorage.setItem(PLAN_KEY, JSON.stringify(plan.bytes));
     localStorage.setItem(ITEMS_KEY, JSON.stringify(plan.items));
+    localStorage.setItem(FX_KEY, fx ? '1' : '0');
   } catch (err) {}
-  console.log('Plan gespeichert: ' + plan.used + ' Praeparate');
-  sendPlan(plan.bytes, 'nach dem Speichern');
+  console.log('Plan gespeichert: ' + plan.used + ' Praeparate, Animation ' +
+              (fx ? 'an' : 'aus'));
+  sendPlan(plan.bytes, 'nach dem Speichern', fx);
 });
 
 Pebble.addEventListener('appmessage', function (e) {
@@ -391,7 +415,7 @@ Pebble.addEventListener('appmessage', function (e) {
   }
   if (p.REQUEST !== undefined) {
     var stored = storedPlan();
-    if (stored) sendPlan(stored, 'auf Anfrage');
+    if (stored) sendPlan(stored, 'auf Anfrage', storedFx());
     else console.log('Kein Plan gespeichert - nichts zu schicken');
   }
   // Die Uhr sagt, was heute ansteht und was davon schon genommen ist.

@@ -3,6 +3,7 @@
 #include "main_window.h"
 #include "phone.h"
 #include "plan.h"
+#include "prefs.h"
 #include "remind.h"
 #include "reminder_window.h"
 #include "strings.h"
@@ -46,6 +47,7 @@ static void prv_init(void) {
   cycle_selftest_run();
 #endif
 
+  prefs_init();
   plan_init();
   phone_init();
   phone_set_observer(prv_plan_changed);

@@ -3,6 +3,7 @@
 #include "phone.h"
 #include "pill_fx.h"
 #include "plan.h"
+#include "prefs.h"
 #include "strings.h"
 
 // Ein Fenster, zwei Ansichten — mehr braucht es nicht:
@@ -77,6 +78,26 @@ static void prv_draw_arrow(GContext *ctx, GRect b, int16_t cy) {
   graphics_context_set_fill_color(ctx, SC_COLOR_SIDEBAR);
   gpath_draw_filled(ctx, arrow);
   gpath_destroy(arrow);
+}
+
+// Einen Strich durch den Text ziehen - so lang wie der Text wirklich ist,
+// nicht so lang wie sein Kasten. Die gemessene Breite kommt aus derselben
+// Schrift und demselben Kasten wie die Ausgabe, sonst stimmte der Strich bei
+// einem abgeschnittenen Namen nicht.
+static void prv_strike(GContext *ctx, const char *text, GFont font, GRect box) {
+  const GSize sz = graphics_text_layout_get_content_size(
+      text, font, box, GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft);
+  int16_t w = sz.w;
+  if (w > box.size.w) w = box.size.w;
+  if (w < 2) return;
+  // Sechs Zehntel, nicht die Haelfte: die Schrift sitzt im Kasten mit Vorlauf
+  // oben, die Mitte des Kastens liegt also ueber der Mitte der Buchstaben.
+  // Nachgemessen stehen die Zeichen auf 62..75, der Strich gehoert auf 68.
+  const int16_t cy = box.origin.y + LINE_NAME * 6 / 10;
+  graphics_context_set_stroke_color(ctx, SC_COLOR_TEXT);
+  graphics_context_set_stroke_width(ctx, WIDE ? 2 : 1);
+  graphics_draw_line(ctx, GPoint(box.origin.x, cy), GPoint(box.origin.x + w, cy));
+  graphics_context_set_stroke_width(ctx, 1);
 }
 
 // "täglich" oder "alle X Tage".
@@ -185,7 +206,11 @@ static void prv_draw_today(GContext *ctx, GRect b) {
     const int i = due_idx[k];
     const PlanItem *it = plan_item(i);
     const bool taken = plan_taken(i);
-    const GColor fg = taken ? SC_COLOR_DIM : SC_COLOR_TEXT;
+    // Erledigtes wird GESTRICHEN, nicht ausgegraut. Grau auf einem Schirm,
+    // der spiegelt statt zu leuchten, liest sich als ausgewaschen und nicht
+    // als erledigt. Ein Strich ist dieselbe Geste wie auf einer Liste aus
+    // Papier und bleibt bei jedem Licht deutlich.
+    const GColor fg = SC_COLOR_TEXT;
 
     // Zeit in LECO, wie im Kopf eines Timeline-Eintrags
     char when[8];
@@ -198,17 +223,16 @@ static void prv_draw_today(GContext *ctx, GRect b) {
     // "Multivitamin" in fetter 24er Schrift nichts mehr übrig.
     if (taken) prv_draw_check(ctx, GPoint(margin + (WIDE ? 62 : 56), y + 4), 12);
 
-    graphics_draw_text(ctx, it->name,
-                       fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_24_BOLD
-                                                  : FONT_KEY_GOTHIC_18_BOLD),
-                       GRect(margin, y + LINE_TIME, col_w, LINE_NAME + 2),
+    GFont name_font = fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_24_BOLD
+                                                 : FONT_KEY_GOTHIC_18_BOLD);
+    const GRect name_box = GRect(margin, y + LINE_TIME, col_w, LINE_NAME + 2);
+    graphics_draw_text(ctx, it->name, name_font, name_box,
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    if (taken) prv_strike(ctx, it->name, name_font, name_box);
 
     char sub[40];
     prv_sub_text(i, sub, sizeof(sub));
-    // Beim abgehakten Eintrag tritt AUCH der Untertitel zurück - sonst stünde
-    // der Name grau und "genommen" darunter schwarz.
-    graphics_context_set_text_color(ctx, taken ? SC_COLOR_DIM : SC_COLOR_SUB);
+    graphics_context_set_text_color(ctx, SC_COLOR_SUB);
     graphics_draw_text(ctx, sub,
                        fonts_get_system_font(WIDE ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                        GRect(margin, y + LINE_TIME + LINE_NAME, col_w, LINE_SUB + 2),
@@ -361,6 +385,11 @@ static void prv_select(ClickRecognizerRef recognizer, void *context) {
     // Genommen: Pilly spielt. Beim Zurücknehmen nicht - eine Feier für einen
     // Fehlgriff wäre verkehrt herum.
     vibes_short_pulse();
+  }
+  // Gefeiert wird die EINNAHME, nicht die einzelne Tablette: stehen Kreatin
+  // und Vitamine beide auf acht Uhr, spielt Pilly erst, wenn beide abgehakt
+  // sind. Und nur, wenn die Animation eingeschaltet ist.
+  if (!taken && prefs_fx() && plan_slot_complete(s_sel)) {
     s_playing = true;
     const GRect b = layer_get_bounds(s_canvas);
     pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),

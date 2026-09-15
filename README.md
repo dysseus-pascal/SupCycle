@@ -40,12 +40,19 @@ liefe die Auswahl unten hinaus und man wählte blind weiter.
 Die kleine Uhrzeit über der Liste ist weg: die Timeline-LISTE hat keine, nur
 das Pin-Detail. Die sechzehn Pixel gehören dem ersten Eintrag.
 
-Alles steht in **reinem Schwarz**, auch die Untertitel. Grau (85,85,85) sah auf
-dem Emulator ordentlich aus und wusch auf der echten Uhr aus — das Display
-leuchtet nicht, es spiegelt. Nachgemessen ist in der Systemtimeline auch der
-Untertitel reines Schwarz; die Staffelung kommt dort allein aus der
-Schriftgrösse. Grau bleibt einer einzigen Sache vorbehalten: dem abgehakten
-Eintrag, der zurücktreten soll.
+Alles steht in **reinem Schwarz** — auch die Untertitel, und auch das
+Abgehakte. Grau (85,85,85) sah auf dem Emulator ordentlich aus und wusch auf
+der echten Uhr aus; das Display leuchtet nicht, es spiegelt. Nachgemessen ist
+in der Systemtimeline auch der Untertitel reines Schwarz, die Staffelung kommt
+dort allein aus der Schriftgrösse.
+
+Was genommen ist, wird deshalb **gestrichen** statt ausgegraut: derselbe Strich
+wie auf einer Liste aus Papier, und bei jedem Licht deutlich. Er ist so lang
+wie der Text wirklich ist, nicht wie sein Kasten — gemessen mit derselben
+Schrift und demselben Kasten, damit er auch bei einem abgeschnittenen Namen
+stimmt. Und er sitzt auf sechs Zehnteln der Zeilenhöhe, nicht auf der Hälfte:
+die Schrift hat oben Vorlauf, die Mitte des Kastens liegt über der Mitte der
+Buchstaben.
 
 In der Zyklusansicht richtet sich die Schriftgrösse nach dem Platz: solange
 ALLE Präparate gross hineinpassen, stehen sie gross da, sonst eine Nummer
@@ -77,6 +84,18 @@ ist, was links steht; die Leiste ist Beiwerk.
 
 Beim Abhaken spielt **Pilly** — auf dem Heute-Schirm wie im Erinnerungsfenster.
 Beim Zurücknehmen nicht: eine Feier für einen Fehlgriff wäre verkehrt herum.
+
+Gefeiert wird die **Einnahme, nicht die einzelne Tablette**. Stehen Kreatin und
+Vitamine beide auf acht Uhr, ist das ein Termin und nicht zwei — Pilly spielt
+erst, wenn beides abgehakt ist. Das Erinnerungsfenster hielt es immer schon so,
+weil es die ganze Gruppe auf einmal abhakt; der Heute-Schirm zählte bis dahin
+einzeln.
+
+Wem das zu viel ist, schaltet die Animation **in den Einstellungen ab**. Sie
+steht dort ganz oben und nicht je Präparat: sie gehört zur App, nicht zum
+einzelnen Eintrag. Abgeschaltet heisst nicht, dass das Erinnerungsfenster
+stehen bleibt — es geht dann direkt zu, denn der Weg hinaus führte bis dahin
+über das Ende der Animation.
 
 **Heute** zeigt, was ansteht, mit Haken bei dem, was schon genommen ist. Was
 heute nicht dran ist, steht gar nicht da — in der Pause will man nicht daran

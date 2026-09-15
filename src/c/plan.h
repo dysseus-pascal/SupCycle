@@ -74,3 +74,9 @@ int plan_open_today(void);
 
 // Nächster heute fälliger und noch offener Eintrag, -1 wenn keiner.
 int plan_next_open(void);
+
+// Sind ALLE heute fälligen Einträge zur selben Uhrzeit wie `index` genommen?
+//
+// Kreatin und Vitamine stehen beide auf acht Uhr - das ist EINE Einnahme,
+// nicht zwei. Die Animation feiert sie, nicht die einzelne Tablette.
+bool plan_slot_complete(int index);
