@@ -1,5 +1,6 @@
 #include "reminder_window.h"
 #include "theme.h"
+#include "phone.h"
 #include "plan.h"
 #include "pill_fx.h"
 #include "remind.h"
@@ -73,7 +74,9 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   const int16_t col_w = b.size.w - ACTION_BAR_WIDTH - margin - 4;
 
   // Kopf: Kapsel und die Uhrzeit daneben
-  const int16_t pill_w = wide ? 30 : 26;
+  // Schmaler als früher: die Kapsel ist jetzt fast doppelt so hoch wie breit,
+  // und mit der alten Breite ragte sie in die Trennlinie.
+  const int16_t pill_w = wide ? 22 : 20;
   const int16_t head_y = PBL_IF_ROUND_ELSE(46, 26);
   pill_fx_draw_still(ctx, GPoint(margin + pill_w / 2, head_y), pill_w);
 
@@ -129,13 +132,14 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
   // Wecker neu stellen: die eben abgehakten sollen heute nicht nochmal
   // klopfen, falls noch ein Wecker auf dieselbe Minute steht.
   remind_schedule(0);
+  phone_send_today();     // Pins als erledigt markieren
 
   s_playing = true;
   layer_mark_dirty(s_canvas);
   action_bar_layer_remove_from_window(s_bar);
   const GRect b = layer_get_bounds(s_canvas);
   pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),
-               (int16_t)(b.size.w * 45 / 100), prv_fx_done);
+               (int16_t)(b.size.w * 34 / 100), prv_fx_done);
 }
 
 static void prv_later(ClickRecognizerRef recognizer, void *context) {

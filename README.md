@@ -73,6 +73,7 @@ tools/sync_supcycle.sh <Quellordner>            # spiegeln + bauen
 tools/sync_supcycle.sh <Quellordner> demo       # mit Beispielplan
 sh tools/selftest.sh <Quellordner>                  # Zyklusrechnung
 sh tools/test_remind.sh <Quellordner>               # Weckpfad und Animation
+node tools/pkjs_pin_test.js                         # Timeline-Pins
 node tools/strings_check.js src/c/strings_table.h
 ```
 
@@ -126,22 +127,47 @@ Aufploppen mit Überschwingen, derselbe Strahlenkranz zum Schluss. Sie nickt
 dazwischen zweimal — nach oben und unten, nicht seitlich; seitlich sähe aus wie
 das Schütteln des Glases beim Leeren, und hier wird nichts geleert.
 
-Oben rot, unten weiss, Gesicht auf der hellen Hälfte. Auf der
-Schwarz-Weiss-Uhr wird aus Rot Schwarz; die Zweiteilung bleibt erkennbar.
+Oben rot, unten weiss, **Gesicht auf der roten Hälfte** — dort, wo man bei
+einem Gegenüber hinsieht. Jeder Strich wird erst mit weissem Saum und dann
+schwarz gezogen, er hebt sich also auch auf Rot ab. Auf der Schwarz-Weiss-Uhr
+wird aus Rot Schwarz; die Zweiteilung bleibt erkennbar.
+
+Sie ist fast doppelt so hoch wie breit (72 zu 132). Gedrungener sähe sie aus wie
+eine Tablette; erst dieses Verhältnis liest sich als Kapsel.
 
 Gebaut ohne Zuschneiden — die SDK bietet dafür nichts Öffentliches. Statt
 dessen: erst die ganze Kapsel weiss, dann die obere Hälfte als Rechteck mit nur
 oben runden Ecken darüber. Das trifft die Form genau, weil der Radius gleich der
 halben Breite ist.
 
-## Noch nicht drin
+## Timeline-Pins
 
-**Timeline-Pins.** Was heute ansteht, liesse sich auch ohne App-Öffnen in der
-Timeline zeigen. Die Mechanik dafür steht in Drinktervall bereit.
+Was heute ansteht, steht auch in der Timeline — ein Pin je Präparat, zur
+eingetragenen Uhrzeit. Genommenes wechselt das Symbol und sagt es im
+Untertitel.
+
+**Die Zyklusrechnung bleibt dabei an einer einzigen Stelle.** Die Uhr schickt
+dem Telefon nur das Datum und zwei Bitmasken — was heute ansteht, und was davon
+schon genommen ist. Namen und Uhrzeiten hat die Telefonseite ohnehin, sie hat
+den Plan ja selbst gebaut. Die Zyklen in JavaScript nachzubauen hiesse, zwei
+Wahrheiten zu pflegen, die auseinanderlaufen können.
+
+**Das Datum kommt als JJJJMMTT**, nicht als Tagesnummer. Der erste Entwurf
+schickte Tage seit der Epoche; die Uhr bildet die aus ihrer *Ortszeit*, und das
+Telefon rechnete sie über UTC zurück — bei positiver Zeitzone landete der Pin
+einen Tag zu früh, also in der Vergangenheit. Der Prüfstand hat das gefunden,
+bevor es eine Uhr gesehen hat.
+
+Geprüft mit `tools/pkjs_pin_test.js` (22 Prüfungen): Kennung, Zeitpunkt,
+Symbole, und dass ein unveränderter Pin **nicht** erneut hinausgeht, ein
+abgehakter aber schon. Gegenprobe gemacht — nimmt man den Tag aus der Kennung,
+fallen drei Prüfungen; nimmt man den Zustand aus der Signatur, zwei.
+
+## Noch nicht drin
 
 **Health Connect.** Für diesen Stack lohnt es nicht: Kreatin, Maca und
 Ashwagandha haben dort keine Felder, und beim Multivitamin fehlen ausgerechnet
-B6 und B12. Was eintragbar wäre, kostete mehr Tipparbeit als es einbringt.
+B6 und B12.
 
 ## Lizenz
 

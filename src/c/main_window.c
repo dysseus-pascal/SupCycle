@@ -1,5 +1,6 @@
 #include "main_window.h"
 #include "theme.h"
+#include "phone.h"
 #include "plan.h"
 #include "strings.h"
 
@@ -183,6 +184,7 @@ static void prv_select(ClickRecognizerRef recognizer, void *context) {
   if (next < 0) return;
   plan_set_taken(next, true);
   vibes_short_pulse();
+  phone_send_today();     // Pin als erledigt markieren
   main_window_refresh();
 }
 

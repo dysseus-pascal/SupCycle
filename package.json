@@ -1,7 +1,7 @@
 {
   "name": "supcycle",
   "author": "dysseus-pascal",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "CC0-1.0",
   "keywords": [
     "pebble-app"
@@ -65,7 +65,10 @@
       "TIME6",
       "ON6",
       "OFF6",
-      "SINCE6"
+      "SINCE6",
+      "TODAY",
+      "DUE",
+      "TAKEN"
     ],
     "resources": {
       "media": [

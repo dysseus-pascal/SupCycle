@@ -11,3 +11,13 @@ void phone_init(void);
 
 // Wird gerufen, wenn ein neuer Plan angekommen ist.
 void phone_set_observer(void (*on_plan)(void));
+
+// Dem Telefon sagen, was HEUTE ansteht und was davon schon genommen ist.
+// Daraus baut die Telefonseite die Timeline-Pins.
+//
+// Geschickt werden nur der Tag und zwei Bitmasken - die Namen und Uhrzeiten
+// hat die Telefonseite ohnehin, sie hat den Plan ja selbst gebaut. Und die
+// ZYKLUSRECHNUNG bleibt damit an einer einzigen Stelle: in cycle.c. Sie in
+// JavaScript nachzubauen hiesse, zwei Wahrheiten zu pflegen, die
+// auseinanderlaufen koennen.
+void phone_send_today(void);

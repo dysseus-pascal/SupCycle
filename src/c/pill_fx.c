@@ -23,11 +23,15 @@
 #define NOD_MS      90
 
 // Kapsel und Gesicht sind in Einheiten einer 72 Pixel BREITEN Kapsel
-// beschrieben und werden über s_g.k auf die echte Breite skaliert. Die Kapsel
-// ist höher als breit: 72 breit, 116 hoch, Radius 36.
+// beschrieben und werden über s_g.k auf die echte Breite skaliert.
+//
+// Sie ist deutlich höher als breit: 72 zu 132, Radius 36. Eine gedrungene
+// Kapsel sieht aus wie eine Tablette; erst dieses Verhältnis liest sich als
+// Kapsel. Wer sie breiter macht, muss die Spielbreite in reminder_window.c
+// mitziehen, sonst wächst sie aus dem Schirm.
 #define BASE_W 72
 #define HALF_W 36
-#define HALF_H 58
+#define HALF_H 66
 
 static Layer *s_layer;
 static Animation *s_anim;
@@ -85,10 +89,14 @@ static void prv_polyline(GContext *ctx, GPoint *points, uint32_t n) {
   gpath_destroy(path);
 }
 
-// Gesicht auf der unteren, weissen Hälfte — leicht nach links versetzt
+// Gesicht auf der OBEREN, roten Hälfte — leicht nach links versetzt
 // (Seitenblick), wie beim Glas.
+//
+// Auf Rot statt auf Weiss: jeder Strich wird erst mit weissem Saum und dann
+// schwarz gezogen (prv_pen), er hebt sich also auch dort ab. Und oben sitzt
+// das Gesicht dort, wo man bei einem Gegenüber hinsieht.
 static void prv_face(GContext *ctx) {
-  const int32_t fy = 22;                      // Mitte der unteren Hälfte
+  const int32_t fy = -34;                     // Mitte der oberen Hälfte
   const int32_t eyes[2] = { -13, 7 };
   for (int i = 0; i < 2; i++) {
     prv_line(ctx, prv_gp(eyes[i], fy - 9), prv_gp(eyes[i], fy - 2));
