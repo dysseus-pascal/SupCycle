@@ -21,7 +21,6 @@ STR(STR_CYCLE,        0,  "Cycle",              "Zyklus")
 STR(STR_DAILY,        0,  "daily",              "täglich")
 STR(STR_EVERY_FMT,   32,  "every %d days",      "alle %d Tage")
 STR(STR_UNLIMITED,    0,  "no break",           "ohne Pause")
-STR(STR_TAKEN,        0,  "taken",              "genommen")
 STR(STR_ON_FMT,      32,  "week %d of %d",      "Woche %d von %d")
 // In der Pause zaehlt nicht, welche Pausenwoche laeuft, sondern wann sie
 // endet - und die Zeile brach mit beidem auf dem Schirm ab.

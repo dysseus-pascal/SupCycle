@@ -93,10 +93,11 @@ function slotSection(t, i) {
   var n = i + 1;
   return {
     type: 'section',
-    // Die Kennung braucht die Vorwahl unten, um Plätze ein- und auszublenden.
-    id: 'slot' + n,
+    // Eine Kennung AUF DER SECTION brächte nichts: Clay macht daraus nur ein
+    // <div class="section"> und verwirft die id. Sie hängt deshalb an der
+    // Überschrift, und die Vorwahl findet den Kasten von dort aus.
     items: [
-      { type: 'heading', defaultValue: t.slot + ' ' + n },
+      { type: 'heading', id: 'head' + n, defaultValue: t.slot + ' ' + n },
       {
         type: 'input',
         messageKey: 'NAME' + n,
@@ -193,16 +194,48 @@ module.exports.SLOTS = SLOTS;
 module.exports.custom = function () {
   var clayConfig = this;
   var MAX = 6;
+  var KEYS = ['NAME', 'TIME', 'EVERY', 'ON', 'OFF', 'SINCE'];
+
+  // Warum nicht einfach getItemById('slot1'):
+  //
+  // Clay legt beim Aufbau NUR Nicht-Section-Elemente in sein Verzeichnis. Eine
+  // section wird zu einem blossen <div class="section">, ihre id fällt dabei
+  // weg. getItemById('slot1') gab also immer undefined zurück - und weil die
+  // Schleife das stillschweigend übersprang, tat die Vorwahl gar nichts.
+  //
+  // Die Überschrift dagegen BEHÄLT ihre Kennung. Von ihrem Element aus lässt
+  // sich der umgebende Kasten finden und verbergen. Nur die Felder zu
+  // verbergen genügte nicht: .section hat eigenen Hintergrund und Schatten und
+  // bliebe als leerer grauer Kasten stehen.
+  function box(i) {
+    var head = clayConfig.getItemById('head' + i);
+    if (!head || !head.$element || !head.$element[0]) return null;
+    var el = head.$element[0];
+    return el.closest ? el.closest('.section') : null;
+  }
 
   function apply() {
     var sel = clayConfig.getItemByMessageKey('COUNT');
     var n = sel ? parseInt(sel.get(), 10) : MAX;
     if (!n || n < 1 || n > MAX) n = MAX;
+
     for (var i = 1; i <= MAX; i++) {
-      var sec = clayConfig.getItemById('slot' + i);
-      if (!sec) continue;
-      if (i <= n) sec.show();
-      else sec.hide();
+      var on = i <= n;
+      var b = box(i);
+      if (b) {
+        if (on) b.classList.remove('hide');
+        else b.classList.add('hide');
+        continue;
+      }
+      // Kein Kasten gefunden - dann wenigstens die Felder selbst. Ein leerer
+      // Rahmen zu viel ist besser als sechs Abschnitte, die niemand wollte.
+      var head = clayConfig.getItemById('head' + i);
+      if (head) { if (on) head.show(); else head.hide(); }
+      for (var k = 0; k < KEYS.length; k++) {
+        var it = clayConfig.getItemByMessageKey(KEYS[k] + i);
+        if (!it) continue;
+        if (on) it.show(); else it.hide();
+      }
     }
   }
 

@@ -109,7 +109,10 @@ static void prv_every_text(uint8_t every, char *out, size_t n) {
 // Die dritte Zeile eines Eintrags: was über ihn zu sagen ist. Genommenes sagt
 // es selbst, Zyklisches nennt die Phase, Dauerhaftes bleibt bei "täglich".
 static void prv_sub_text(int i, char *out, size_t n) {
-  if (plan_taken(i)) { snprintf(out, n, "%s", S(STR_TAKEN)); return; }
+  // Kein "genommen" mehr: der Strich durch den Namen sagt es bereits, und
+  // zweimal dasselbe zu sagen macht es nicht richtiger. Die Zeile bleibt
+  // stattdessen beim Rhythmus - der gilt weiter, auch wenn heute erledigt
+  // ist, und eine leere Zeile waere nur verschenkter Platz.
   const PlanItem *it = plan_item(i);
   if (!it) { snprintf(out, n, "%s", S(STR_DAILY)); return; }
   const CycleState c = plan_cycle(i);

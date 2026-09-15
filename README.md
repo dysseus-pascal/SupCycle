@@ -46,7 +46,11 @@ der echten Uhr aus; das Display leuchtet nicht, es spiegelt. Nachgemessen ist
 in der Systemtimeline auch der Untertitel reines Schwarz, die Staffelung kommt
 dort allein aus der Schriftgrösse.
 
-Was genommen ist, wird deshalb **gestrichen** statt ausgegraut: derselbe Strich
+Unter dem Strich steht kein „genommen" mehr — der Strich sagt es schon, und
+zweimal dasselbe zu sagen macht es nicht richtiger. Die Zeile bleibt beim
+Rhythmus, der ja weiter gilt.
+
+Was genommen ist, wird **gestrichen** statt ausgegraut: derselbe Strich
 wie auf einer Liste aus Papier, und bei jedem Licht deutlich. Er ist so lang
 wie der Text wirklich ist, nicht wie sein Kasten — gemessen mit derselben
 Schrift und demselben Kasten, damit er auch bei einem abgeschnittenen Namen
@@ -135,6 +139,22 @@ Ganz oben steht, **wie viele Präparate** es sind — nur so viele Plätze zeigt
 Seite. Ohne diese Vorwahl stünden dort immer sechs Abschnitte, von denen die
 meisten leer bleiben, und man suchte seinen Eintrag zwischen Platzhaltern.
 
+Das Verbergen greift **nicht an der `section` an**. Clay legt beim Aufbau nur
+Nicht-Section-Elemente in sein Verzeichnis; aus einer `section` wird ein blosses
+`<div class="section">`, ihre `id` fällt weg. `getItemById('slot1')` gab deshalb
+immer `undefined` zurück — und weil die Schleife das stillschweigend übersprang,
+tat die Vorwahl lange Zeit **gar nichts**, ohne dass es irgendwo aufgefallen
+wäre.
+
+Die Kennung hängt jetzt an der **Überschrift**, die sie behält. Von deren
+Element aus findet `closest('.section')` den umgebenden Kasten, und der wird
+verborgen. Nur die Felder zu verbergen genügte nicht: `.section` hat eigenen
+Hintergrund und Schatten und bliebe als leerer grauer Kasten stehen.
+
+`tools/clay_count_test.js` baut Clay so weit nach, wie es dafür nötig ist —
+insbesondere **ohne** Kennungen für Sections. Wer den alten Weg wieder einbaut,
+fällt dort durch statt erst auf dem Telefon.
+
 Sechs feste Plätze statt einer Liste zum Anlegen und Löschen: Clay kennt keine
 dynamischen Listen, und sie nachzubauen hiesse, die Seite selbst zu schreiben.
 Sechs Zeilen decken jeden Stack ab, den man von Hand pflegt.
@@ -167,6 +187,7 @@ tools/sync_supcycle.sh <Quellordner> demo       # mit Beispielplan
 sh tools/selftest.sh <Quellordner>                  # Zyklusrechnung
 sh tools/test_remind.sh <Quellordner>               # Weckpfad und Animation
 node tools/pkjs_pin_test.js                         # Timeline-Pins
+node tools/clay_count_test.js   # Anzahlsvorwahl der Konfigseite
 node tools/strings_check.js src/c/strings_table.h
 ```
 
