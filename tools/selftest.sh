@@ -14,12 +14,12 @@
 #
 # Exitcode 0 = alle Pruefungen bestanden.
 export PATH=$HOME/.local/bin:$PATH
-SRC="${1:-$KURINTERVALL_SRC}"
+SRC="${1:-$SUPCYCLE_SRC}"
 E="--emulator emery"
-LOG=$HOME/kurintervall-selftest.log
+LOG=$HOME/supcycle-selftest.log
 
-sh "$SRC/tools/sync_kurintervall.sh" "$SRC" selftest || exit 1
-cd $HOME/kurintervall || exit 1
+sh "$SRC/tools/sync_supcycle.sh" "$SRC" selftest || exit 1
+cd $HOME/supcycle || exit 1
 
 pebble kill >/dev/null 2>&1
 sleep 2

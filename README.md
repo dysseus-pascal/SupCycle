@@ -1,4 +1,4 @@
-# Kurintervall
+# SupCycle
 
 Präparate im Blick behalten: was heute ansteht, und wo die zyklischen gerade in
 ihrem Zyklus stehen.
@@ -60,8 +60,8 @@ seit der Epoche, aus der Ortszeit.
 ## Bauen und prüfen
 
 ```sh
-tools/sync_kurintervall.sh <Quellordner>            # spiegeln + bauen
-tools/sync_kurintervall.sh <Quellordner> demo       # mit Beispielplan
+tools/sync_supcycle.sh <Quellordner>            # spiegeln + bauen
+tools/sync_supcycle.sh <Quellordner> demo       # mit Beispielplan
 sh tools/selftest.sh <Quellordner>                  # Zyklusrechnung
 node tools/strings_check.js src/c/strings_table.h
 ```

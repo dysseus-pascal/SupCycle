@@ -1,4 +1,4 @@
-// Kurintervall — Telefonseite.
+// SupCycle — Telefonseite.
 //
 // Ihre einzige Aufgabe: den auf der Konfigseite eingetragenen Plan in einen
 // Datenblock packen und an die Uhr schicken. Die Uhr rechnet daraus selbst
@@ -14,10 +14,10 @@ var Clay = require('@rebble/clay');
 var clayConfig = require('./config');
 
 var SLOTS = clayConfig.SLOTS || 6;
-var NAME_BYTES = 16;        // muss zu KI_NAME_LEN in src/c/plan.h passen
-var ITEM_BYTES = 25;        // muss zu KI_ITEM_BYTES passen
-var PLAN_KEY = 'kurintervall_plan';
-var LANG_KEY = 'kurintervall_lang';
+var NAME_BYTES = 16;        // muss zu SC_NAME_LEN in src/c/plan.h passen
+var ITEM_BYTES = 25;        // muss zu SC_ITEM_BYTES passen
+var PLAN_KEY = 'supcycle_plan';
+var LANG_KEY = 'supcycle_lang';
 
 var MODE_UNUSED = 0, MODE_DAILY = 1, MODE_CYCLIC = 2;
 
@@ -181,5 +181,5 @@ Pebble.addEventListener('appmessage', function (e) {
 });
 
 Pebble.addEventListener('ready', function () {
-  console.log('Kurintervall bereit');
+  console.log('SupCycle bereit');
 });

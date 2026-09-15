@@ -9,12 +9,12 @@
 // sich — sie muss ihn nie selbst erfragen, und ohne Telefon läuft sie mit dem
 // zuletzt empfangenen weiter.
 
-#define KI_MAX_ITEMS 6
-#define KI_NAME_LEN  16   //< Bytes, nicht Zeichen. Umlaute zählen doppelt.
+#define SC_MAX_ITEMS 6
+#define SC_NAME_LEN  16   //< Bytes, nicht Zeichen. Umlaute zählen doppelt.
 
 // Ein Eintrag auf der Leitung UND im Speicher: 25 Byte, feste Reihenfolge.
 // Sechs davon sind 150 Byte und passen damit in einen Persist-Wert (256).
-#define KI_ITEM_BYTES 25
+#define SC_ITEM_BYTES 25
 
 typedef enum {
   PlanUnused = 0,
@@ -23,7 +23,7 @@ typedef enum {
 } PlanMode;
 
 typedef struct {
-  char name[KI_NAME_LEN];
+  char name[SC_NAME_LEN];
   uint8_t hour;
   uint8_t minute;
   uint8_t mode;         //< PlanMode
@@ -38,7 +38,7 @@ void plan_init(void);
 // Rückgabe: true, wenn er sich geändert hat.
 bool plan_set_from_bytes(const uint8_t *data, uint16_t len);
 
-int plan_count(void);                    //< benutzte Einträge, 0..KI_MAX_ITEMS
+int plan_count(void);                    //< benutzte Einträge, 0..SC_MAX_ITEMS
 const PlanItem *plan_item(int index);
 
 // Heutiger Tag als Tage seit Epoche, aus der ORTSZEIT. Gerechnet wird überall

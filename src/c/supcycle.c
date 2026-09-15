@@ -14,7 +14,7 @@ static void prv_glance_reload(AppGlanceReloadSession *session, size_t limit, voi
   } else {
     const int open = plan_open_today();
     int due = 0;
-    for (int i = 0; i < KI_MAX_ITEMS; i++) {
+    for (int i = 0; i < SC_MAX_ITEMS; i++) {
       if (plan_due_today(i)) due++;
     }
     if (open == 0) snprintf(text, sizeof(text), "%s", S(STR_GLANCE_DONE));
@@ -31,7 +31,7 @@ static void prv_init(void) {
   // Sprache der Uhr uebernehmen, bevor das erste Fenster Texte holt
   strings_refresh();
 
-#ifdef KI_SELFTEST
+#ifdef SC_SELFTEST
   // Nur im Pruefbau: die Zyklusrechnung gegen vorab bestimmte Erwartungen
   // stellen. Steht bewusst VOR dem ersten Fenster, damit das Log vollstaendig
   // ist, auch wenn die App danach sofort beendet wird.

@@ -23,7 +23,7 @@ static bool s_cycle_view;
 // Haken, von Hand gezeichnet: zwei Striche. Ein Bildsymbol dafür wäre eine
 // Ressourcendatei für achtzehn Pixel.
 static void prv_draw_check(GContext *ctx, GPoint at, int16_t size) {
-  graphics_context_set_stroke_color(ctx, KI_COLOR_BAR);
+  graphics_context_set_stroke_color(ctx, SC_COLOR_BAR);
   graphics_context_set_stroke_width(ctx, 3);
   graphics_draw_line(ctx, GPoint(at.x, at.y + size / 2),
                           GPoint(at.x + size / 3, at.y + size));
@@ -34,19 +34,19 @@ static void prv_draw_check(GContext *ctx, GPoint at, int16_t size) {
 
 static void prv_draw_today(GContext *ctx, GRect b) {
   const bool wide = PBL_DISPLAY_WIDTH >= 180;
-  const int16_t margin = KI_MARGIN;
-  const int16_t col_w = b.size.w - KI_SIDEBAR_W - margin - 4;
+  const int16_t margin = SC_MARGIN;
+  const int16_t col_w = b.size.w - SC_SIDEBAR_W - margin - 4;
   int16_t y = PBL_IF_ROUND_ELSE(40, 16);
 
   if (plan_count() == 0) {
-    graphics_context_set_text_color(ctx, KI_COLOR_TEXT);
+    graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
     graphics_draw_text(ctx, S(STR_NO_PLAN),
                        fonts_get_system_font(wide ? FONT_KEY_GOTHIC_24_BOLD
                                                   : FONT_KEY_GOTHIC_18_BOLD),
                        GRect(margin, y, col_w, wide ? 30 : 24),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
     y += wide ? 32 : 26;
-    graphics_context_set_text_color(ctx, KI_COLOR_DIM);
+    graphics_context_set_text_color(ctx, SC_COLOR_DIM);
     graphics_draw_text(ctx, S(STR_NO_PLAN_SUB),
                        fonts_get_system_font(wide ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
                        GRect(margin, y, col_w, b.size.h - y - 4),
@@ -57,7 +57,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
   // Kopfzeile: wie viele noch offen sind
   const int open = plan_open_today();
   int due = 0;
-  for (int i = 0; i < KI_MAX_ITEMS; i++) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (plan_due_today(i)) due++;
   }
   char head[40];
@@ -65,7 +65,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
   else if (open == 0) snprintf(head, sizeof(head), "%s", S(STR_ALL_DONE));
   else snprintf(head, sizeof(head), S(STR_OPEN_FMT), open, due);
 
-  graphics_context_set_text_color(ctx, open == 0 ? KI_COLOR_DIM : KI_COLOR_TEXT);
+  graphics_context_set_text_color(ctx, open == 0 ? SC_COLOR_DIM : SC_COLOR_TEXT);
   graphics_draw_text(ctx, head,
                      fonts_get_system_font(wide ? FONT_KEY_GOTHIC_18_BOLD
                                                 : FONT_KEY_GOTHIC_14_BOLD),
@@ -75,7 +75,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
 
   // Ein Eintrag je Zeile. Was heute nicht ansteht, steht gar nicht da - in der
   // Pause will man nicht daran erinnert werden, dass man pausiert.
-  for (int i = 0; i < KI_MAX_ITEMS && y < b.size.h - 8; i++) {
+  for (int i = 0; i < SC_MAX_ITEMS && y < b.size.h - 8; i++) {
     if (!plan_due_today(i)) continue;
     const PlanItem *it = plan_item(i);
     const bool taken = plan_taken(i);
@@ -84,7 +84,7 @@ static void prv_draw_today(GContext *ctx, GRect b) {
 
     char line[40];
     snprintf(line, sizeof(line), "%02d:%02d  %s", it->hour, it->minute, it->name);
-    graphics_context_set_text_color(ctx, taken ? KI_COLOR_DIM : KI_COLOR_TEXT);
+    graphics_context_set_text_color(ctx, taken ? SC_COLOR_DIM : SC_COLOR_TEXT);
     graphics_draw_text(ctx, line,
                        fonts_get_system_font(taken ? FONT_KEY_GOTHIC_18
                                                    : FONT_KEY_GOTHIC_18_BOLD),
@@ -96,21 +96,21 @@ static void prv_draw_today(GContext *ctx, GRect b) {
 
 static void prv_draw_cycle(GContext *ctx, GRect b) {
   const bool wide = PBL_DISPLAY_WIDTH >= 180;
-  const int16_t margin = KI_MARGIN;
-  const int16_t col_w = b.size.w - KI_SIDEBAR_W - margin - 4;
+  const int16_t margin = SC_MARGIN;
+  const int16_t col_w = b.size.w - SC_SIDEBAR_W - margin - 4;
   int16_t y = PBL_IF_ROUND_ELSE(40, 16);
 
-  graphics_context_set_text_color(ctx, KI_COLOR_TEXT);
+  graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
   graphics_draw_text(ctx, S(STR_CYCLE), fonts_get_system_font(FONT_KEY_GOTHIC_14),
                      GRect(margin, y, col_w, 18),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
   y += 18;
 
-  for (int i = 0; i < KI_MAX_ITEMS && y < b.size.h - 8; i++) {
+  for (int i = 0; i < SC_MAX_ITEMS && y < b.size.h - 8; i++) {
     const PlanItem *it = plan_item(i);
     if (!it || it->mode == PlanUnused) continue;
 
-    graphics_context_set_text_color(ctx, KI_COLOR_TEXT);
+    graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
     graphics_draw_text(ctx, it->name, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
                        GRect(margin, y, col_w, 22),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
@@ -133,7 +133,7 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
       if (rest[0]) snprintf(sub, sizeof(sub), "%s, %s", phase, rest);
       else snprintf(sub, sizeof(sub), "%s", phase);
     }
-    graphics_context_set_text_color(ctx, KI_COLOR_DIM);
+    graphics_context_set_text_color(ctx, SC_COLOR_DIM);
     graphics_draw_text(ctx, sub, fonts_get_system_font(FONT_KEY_GOTHIC_14),
                        GRect(margin, y, col_w, 20),
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
@@ -145,11 +145,11 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   const GRect b = layer_get_bounds(layer);
 
   // Kleine Uhrzeit oben, wie im Kopf eines Timeline-Eintrags
-  graphics_context_set_text_color(ctx, KI_COLOR_TEXT);
+  graphics_context_set_text_color(ctx, SC_COLOR_TEXT);
   char clock[10];
   clock_copy_time_string(clock, sizeof(clock));
   graphics_draw_text(ctx, clock, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-                     GRect(0, PBL_IF_ROUND_ELSE(10, 0), b.size.w - KI_SIDEBAR_W, 16),
+                     GRect(0, PBL_IF_ROUND_ELSE(10, 0), b.size.w - SC_SIDEBAR_W, 16),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   if (s_cycle_view) prv_draw_cycle(ctx, b);
@@ -158,9 +158,9 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
 
 static void prv_sidebar_update(Layer *layer, GContext *ctx) {
   const GRect b = layer_get_bounds(layer);
-  graphics_context_set_fill_color(ctx, KI_COLOR_SIDEBAR);
+  graphics_context_set_fill_color(ctx, SC_COLOR_SIDEBAR);
   graphics_fill_rect(ctx, b, 0, GCornerNone);
-  graphics_context_set_text_color(ctx, KI_COLOR_ON_SIDEBAR);
+  graphics_context_set_text_color(ctx, SC_COLOR_ON_SIDEBAR);
 
   // Obere Taste: zwischen den Ansichten wechseln
   graphics_draw_text(ctx, s_cycle_view ? S(STR_HINT_BACK) : S(STR_HINT_CYCLE),
@@ -206,8 +206,8 @@ static void prv_load(Window *window) {
   s_canvas = layer_create(bounds);
   layer_set_update_proc(s_canvas, prv_canvas_update);
   layer_add_child(root, s_canvas);
-  s_sidebar = layer_create(GRect(bounds.size.w - KI_SIDEBAR_W, 0,
-                                 KI_SIDEBAR_W, bounds.size.h));
+  s_sidebar = layer_create(GRect(bounds.size.w - SC_SIDEBAR_W, 0,
+                                 SC_SIDEBAR_W, bounds.size.h));
   layer_set_update_proc(s_sidebar, prv_sidebar_update);
   layer_add_child(root, s_sidebar);
   tick_timer_service_subscribe(MINUTE_UNIT, prv_tick);
@@ -231,7 +231,7 @@ void main_window_refresh(void) {
 void main_window_push(void) {
   if (s_window) return;
   s_window = window_create();
-  window_set_background_color(s_window, KI_COLOR_BG);
+  window_set_background_color(s_window, SC_COLOR_BG);
   window_set_click_config_provider(s_window, prv_click_config);
   window_set_window_handlers(s_window, (WindowHandlers) {
     .load = prv_load, .unload = prv_unload,

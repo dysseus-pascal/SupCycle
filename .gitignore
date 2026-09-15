@@ -1,4 +1,4 @@
-# Pebble-Build (entsteht in WSL unter ~/kurintervall/build)
+# Pebble-Build (entsteht in WSL unter ~/supcycle/build)
 build/
 .lock-waf*
 

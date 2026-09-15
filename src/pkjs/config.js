@@ -16,7 +16,7 @@ var SLOTS = 6;
 
 var TEXT = [
   {
-    heading: 'Kurintervall',
+    heading: 'SupCycle',
     intro: 'Was du nimmst, wann, und in welchem Zyklus. Ein Platz ohne Namen ' +
            'bleibt leer.',
     slot: 'Präparat',
@@ -37,7 +37,7 @@ var TEXT = [
     submit: 'Speichern'
   },
   {
-    heading: 'Kurintervall',
+    heading: 'SupCycle',
     intro: 'What you take, when, and in which cycle. A slot without a name ' +
            'stays empty.',
     slot: 'Supplement',

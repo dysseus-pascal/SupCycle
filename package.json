@@ -1,5 +1,5 @@
 {
-  "name": "kurintervall",
+  "name": "supcycle",
   "author": "dysseus-pascal",
   "version": "0.1.0",
   "license": "CC0-1.0",
@@ -11,7 +11,7 @@
     "@rebble/clay": "^1.1.0"
   },
   "pebble": {
-    "displayName": "Kurintervall",
+    "displayName": "SupCycle",
     "uuid": "33ce868a-2beb-4335-9421-4d741ed16eb3",
     "sdkVersion": "3",
     "enableMultiJS": true,

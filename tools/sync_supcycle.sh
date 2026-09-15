@@ -1,20 +1,20 @@
 #!/bin/sh
-# Quellen nach ~/kurintervall spiegeln und bauen (waf vertraegt keine Pfade mit
-# Leerzeichen). Aufruf: sync_kurintervall.sh [<Quellordner>] [<schalter>]
-# Ohne Argument wird $KURINTERVALL_SRC verwendet.
+# Quellen nach ~/supcycle spiegeln und bauen (waf vertraegt keine Pfade mit
+# Leerzeichen). Aufruf: sync_supcycle.sh [<Quellordner>] [<schalter>]
+# Ohne Argument wird $SUPCYCLE_SRC verwendet.
 #
 # Schalter als zweites Argument:
-#   selftest   -DKI_SELFTEST   Zyklusrechnung beim Start pruefen, Ergebnis
+#   selftest   -DSC_SELFTEST   Zyklusrechnung beim Start pruefen, Ergebnis
 #                              ins App-Log.
-#   demo       -DKI_FAKE_PLAN  Beispielplan einsetzen, damit sich die
+#   demo       -DSC_FAKE_PLAN  Beispielplan einsetzen, damit sich die
 #                              Ansichten im Emulator ansehen lassen.
 # Beides nur in der WSL-Kopie; die Windows-Quelle bleibt unberuehrt.
 # Alle nur in der WSL-KOPIE; die Windows-Quelle bleibt unberuehrt.
 export PATH=$HOME/.local/bin:$PATH
-SRC="${1:-$KURINTERVALL_SRC}"
+SRC="${1:-$SUPCYCLE_SRC}"
 MODE="$2"
 [ -d "$SRC" ] || { echo "Quellordner fehlt: '$SRC'"; exit 1; }
-DST=$HOME/kurintervall
+DST=$HOME/supcycle
 mkdir -p "$DST"
 # waf erzeugt message_keys.auto.h aus package.json und merkt eine Aenderung
 # daran nicht - deshalb aufraeumen, sobald sich package.json unterscheidet.
@@ -32,8 +32,8 @@ cd "$DST" || exit 1
 
 FLAGS=""
 case "$MODE" in
-  selftest) FLAGS="-DKI_SELFTEST" ;;
-  demo)     FLAGS="-DKI_FAKE_PLAN" ;;
+  selftest) FLAGS="-DSC_SELFTEST" ;;
+  demo)     FLAGS="-DSC_FAKE_PLAN" ;;
 esac
 if [ -n "$FLAGS" ]; then
   # Anker ist eine Zeile, die es NUR in build() gibt. ctx.load('pebble_sdk')

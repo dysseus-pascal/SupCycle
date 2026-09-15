@@ -1,6 +1,6 @@
 #include "cycle_selftest.h"
 
-#ifdef KI_SELFTEST
+#ifdef SC_SELFTEST
 #include <pebble.h>
 #include "cycle.h"
 

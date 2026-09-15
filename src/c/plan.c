@@ -4,7 +4,7 @@
 #define PERSIST_DAY    2
 #define PERSIST_TAKEN  3
 
-static PlanItem s_items[KI_MAX_ITEMS];
+static PlanItem s_items[SC_MAX_ITEMS];
 static uint8_t s_taken;      //< ein Bit je Eintrag
 static int32_t s_taken_day;  //< für welchen Tag die Bits gelten
 
@@ -28,7 +28,7 @@ static void prv_roll_day(void) {
   persist_write_int(PERSIST_TAKEN, 0);
 }
 
-#ifdef KI_FAKE_PLAN
+#ifdef SC_FAKE_PLAN
 // Nur im Pruefbau: ein Beispielplan, damit sich die Ansichten im Emulator
 // ansehen lassen. Dort gibt es keine Konfigseite und damit keinen Plan - ohne
 // das bliebe der Schirm auf "Noch kein Plan" stehen.
@@ -47,7 +47,7 @@ static void prv_fake_plan(void) {
   };
   memset(s_items, 0, sizeof(s_items));
   for (unsigned i = 0; i < sizeof(demo) / sizeof(demo[0]); i++) {
-    strncpy(s_items[i].name, demo[i].name, KI_NAME_LEN - 1);
+    strncpy(s_items[i].name, demo[i].name, SC_NAME_LEN - 1);
     s_items[i].hour = (uint8_t)demo[i].h;
     s_items[i].minute = (uint8_t)demo[i].m;
     s_items[i].mode = (uint8_t)demo[i].mode;
@@ -60,11 +60,11 @@ static void prv_fake_plan(void) {
 
 void plan_init(void) {
   if (persist_exists(PERSIST_PLAN)) {
-    uint8_t buf[KI_MAX_ITEMS * KI_ITEM_BYTES];
+    uint8_t buf[SC_MAX_ITEMS * SC_ITEM_BYTES];
     const int n = persist_read_data(PERSIST_PLAN, buf, sizeof(buf));
     if (n > 0) plan_set_from_bytes(buf, (uint16_t)n);
   }
-#ifdef KI_FAKE_PLAN
+#ifdef SC_FAKE_PLAN
   prv_fake_plan();
 #endif
   s_taken_day = persist_exists(PERSIST_DAY) ? (int32_t)persist_read_int(PERSIST_DAY) : 0;
@@ -75,8 +75,8 @@ void plan_init(void) {
 // Ein Eintrag auf der Leitung: 16 Byte Name, dann Stunde, Minute, Modus,
 // Wochen an, Wochen aus, dann 4 Byte Ankertag (little endian).
 static void prv_read_item(const uint8_t *p, PlanItem *out) {
-  memcpy(out->name, p, KI_NAME_LEN);
-  out->name[KI_NAME_LEN - 1] = 0;   // was auch kommt: die Zeichenkette endet
+  memcpy(out->name, p, SC_NAME_LEN);
+  out->name[SC_NAME_LEN - 1] = 0;   // was auch kommt: die Zeichenkette endet
   out->hour = p[16];
   out->minute = p[17];
   out->mode = p[18];
@@ -96,12 +96,12 @@ static void prv_read_item(const uint8_t *p, PlanItem *out) {
 
 bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   if (!data) return false;
-  PlanItem fresh[KI_MAX_ITEMS];
+  PlanItem fresh[SC_MAX_ITEMS];
   memset(fresh, 0, sizeof(fresh));
 
-  const int n = len / KI_ITEM_BYTES;
-  for (int i = 0; i < n && i < KI_MAX_ITEMS; i++) {
-    prv_read_item(data + i * KI_ITEM_BYTES, &fresh[i]);
+  const int n = len / SC_ITEM_BYTES;
+  for (int i = 0; i < n && i < SC_MAX_ITEMS; i++) {
+    prv_read_item(data + i * SC_ITEM_BYTES, &fresh[i]);
   }
 
   if (memcmp(fresh, s_items, sizeof(s_items)) == 0) return false;
@@ -113,14 +113,14 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
 
 int plan_count(void) {
   int n = 0;
-  for (int i = 0; i < KI_MAX_ITEMS; i++) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (s_items[i].mode != PlanUnused) n++;
   }
   return n;
 }
 
 const PlanItem *plan_item(int index) {
-  if (index < 0 || index >= KI_MAX_ITEMS) return NULL;
+  if (index < 0 || index >= SC_MAX_ITEMS) return NULL;
   return &s_items[index];
 }
 
@@ -143,13 +143,13 @@ bool plan_due_today(int index) {
 }
 
 bool plan_taken(int index) {
-  if (index < 0 || index >= KI_MAX_ITEMS) return false;
+  if (index < 0 || index >= SC_MAX_ITEMS) return false;
   prv_roll_day();
   return (s_taken & (1u << index)) != 0;
 }
 
 void plan_set_taken(int index, bool taken) {
-  if (index < 0 || index >= KI_MAX_ITEMS) return;
+  if (index < 0 || index >= SC_MAX_ITEMS) return;
   prv_roll_day();
   if (taken) s_taken |= (uint8_t)(1u << index);
   else s_taken &= (uint8_t)~(1u << index);
@@ -158,14 +158,14 @@ void plan_set_taken(int index, bool taken) {
 
 int plan_open_today(void) {
   int n = 0;
-  for (int i = 0; i < KI_MAX_ITEMS; i++) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (plan_due_today(i) && !plan_taken(i)) n++;
   }
   return n;
 }
 
 int plan_next_open(void) {
-  for (int i = 0; i < KI_MAX_ITEMS; i++) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (plan_due_today(i) && !plan_taken(i)) return i;
   }
   return -1;
