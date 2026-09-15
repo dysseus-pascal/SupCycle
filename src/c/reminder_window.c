@@ -76,7 +76,7 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   // Kopf: Kapsel und die Uhrzeit daneben
   // Schmaler als früher: die Kapsel ist jetzt fast doppelt so hoch wie breit,
   // und mit der alten Breite ragte sie in die Trennlinie.
-  const int16_t pill_w = wide ? 22 : 20;
+  const int16_t pill_w = wide ? 18 : 16;
   const int16_t head_y = PBL_IF_ROUND_ELSE(46, 26);
   pill_fx_draw_still(ctx, GPoint(margin + pill_w / 2, head_y), pill_w);
 

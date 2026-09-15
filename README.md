@@ -13,8 +13,10 @@ Schrift, dunkle Seitenleiste rechts. Läuft auf emery, flint und gabbro.
 |---|---|---|
 | ![Heute](screenshots/emery/01-heute.png) | ![Abgehakt](screenshots/emery/02-abgehakt.png) | ![Zyklus](screenshots/emery/03-zyklus.png) |
 | heute | abgehakt | Zyklus |
-| ![Erinnerung](screenshots/emery/04-erinnerung.png) | ![Kapsel](screenshots/emery/05-kapsel.png) | ![Verpufft](screenshots/emery/06-verpufft.png) |
-| Erinnerung | genommen | verpufft |
+| ![Erinnerung](screenshots/emery/04-erinnerung.png) | ![Pilly](screenshots/emery/05-kapsel.png) | |
+| Erinnerung | Pilly | |
+| ![Geschüttelt](screenshots/emery/06-geschuettelt.png) | ![Verpufft](screenshots/emery/07-verpufft.png) | |
+| geschüttelt | verpufft | |
 
 ## Bedienung
 
@@ -122,10 +124,13 @@ einem Zyklus, der über Nacht in die Pause gewechselt ist.
 
 ## Die Kapsel
 
-Das Maskottchen folgt dem Glas aus Drinktervall: dasselbe Strichbild, dasselbe
-Aufploppen mit Überschwingen, derselbe Strahlenkranz zum Schluss. Sie nickt
-dazwischen zweimal — nach oben und unten, nicht seitlich; seitlich sähe aus wie
-das Schütteln des Glases beim Leeren, und hier wird nichts geleert.
+Pilly folgt dem Glas aus Drinktervall: dasselbe Strichbild, dasselbe Aufploppen
+mit Überschwingen, derselbe Strahlenkranz zum Schluss.
+
+Dazwischen wird sie **geschüttelt** und verzieht das Gesicht: die Augen kneifen
+sich zu `><` zusammen, der Mund wird zum Zickzack. Danach ist es ausgestanden,
+sie lächelt wieder und verpufft. Zwei Gesichter statt einem — wie beim Glas,
+das beim Leeren ein Schluck-Gesicht macht.
 
 Oben rot, unten weiss, **Gesicht auf der roten Hälfte** — dort, wo man bei
 einem Gegenüber hinsieht. Jeder Strich wird erst mit weissem Saum und dann

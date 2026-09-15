@@ -7,31 +7,36 @@
 //
 // Ablauf in Promille der Gesamtdauer:
 //   0..POP_END     Kapsel ploppt mit Überschwingen auf, lächelt
-//   ..NOD_END      sie nickt zweimal — ein Lebenszeichen, sonst steht sie nur
+//   ..HOLD_END     kurz still
+//   ..SHAKE_END    sie wird geschüttelt und verzieht das Gesicht
+//   ..SMILE_END    ausgestanden, wieder Lächeln
 //   ..SHRINK_END   Kapsel schrumpft ins Zentrum
 //   ..1000         Strahlenkranz dort, wo die Kapsel war
 
 #ifndef FX_MS
 #define FX_MS 1400          // Gesamtdauer; Testbuilds können sie überschreiben
 #endif
-#define POP_END     110
-#define NOD_END     520
-#define SHRINK_END  700
+#define POP_END     100
+#define HOLD_END    170
+#define SHAKE_END   560
+#define SMILE_END   640
+#define SHRINK_END  780
 #define RAYS         12
 
-#define NOD_PX       2      // Nicken: Versatz nach oben/unten
-#define NOD_MS      90
+#define SHAKE_PX     3      // Schütteln: Versatz links/rechts
+#define SHAKE_MS    55      // ... und Wechsel alle 55 ms
 
 // Kapsel und Gesicht sind in Einheiten einer 72 Pixel BREITEN Kapsel
 // beschrieben und werden über s_g.k auf die echte Breite skaliert.
 //
-// Sie ist deutlich höher als breit: 72 zu 132, Radius 36. Eine gedrungene
+// Sie ist deutlich höher als breit: 72 zu 156, Radius 36. Eine gedrungene
 // Kapsel sieht aus wie eine Tablette; erst dieses Verhältnis liest sich als
-// Kapsel. Wer sie breiter macht, muss die Spielbreite in reminder_window.c
-// mitziehen, sonst wächst sie aus dem Schirm.
+// Kapsel. Wer sie schlanker macht, muss die Spielbreite in reminder_window.c
+// mitziehen, sonst wächst sie aus dem Schirm: die Höhe ist gut das
+// Zweifache der Breite, beim Aufploppen kurz das 2,5-fache.
 #define BASE_W 72
 #define HALF_W 36
-#define HALF_H 66
+#define HALF_H 78
 
 static Layer *s_layer;
 static Animation *s_anim;
@@ -89,20 +94,47 @@ static void prv_polyline(GContext *ctx, GPoint *points, uint32_t n) {
   gpath_destroy(path);
 }
 
+typedef enum { FaceSmile, FaceShaken } Face;
+
 // Gesicht auf der OBEREN, roten Hälfte — leicht nach links versetzt
 // (Seitenblick), wie beim Glas.
 //
 // Auf Rot statt auf Weiss: jeder Strich wird erst mit weissem Saum und dann
 // schwarz gezogen (prv_pen), er hebt sich also auch dort ab. Und oben sitzt
 // das Gesicht dort, wo man bei einem Gegenüber hinsieht.
-static void prv_face(GContext *ctx) {
-  const int32_t fy = -34;                     // Mitte der oberen Hälfte
+static void prv_face(GContext *ctx, Face face) {
+  const int32_t fy = -40;                     // Mitte der oberen Hälfte
   const int32_t eyes[2] = { -13, 7 };
+
   for (int i = 0; i < 2; i++) {
-    prv_line(ctx, prv_gp(eyes[i], fy - 9), prv_gp(eyes[i], fy - 2));
+    const int32_t x = eyes[i];
+    if (face == FaceShaken) {
+      // Zusammengekniffen: das linke Auge ein ">", das rechte ein "<".
+      // Die Spitzen zeigen zueinander — so liest sich das Paar als "><".
+      const int32_t dir = (i == 0) ? 1 : -1;
+      GPoint eye[3] = {
+        prv_gp(x - 4 * dir, fy - 9),
+        prv_gp(x + 3 * dir, fy - 5),
+        prv_gp(x - 4 * dir, fy - 1),
+      };
+      prv_polyline(ctx, eye, 3);
+    } else {
+      prv_line(ctx, prv_gp(x, fy - 9), prv_gp(x, fy - 2));
+    }
   }
-  GPoint mouth[3] = { prv_gp(-14, fy + 6), prv_gp(-3, fy + 12), prv_gp(8, fy + 6) };
-  prv_polyline(ctx, mouth, 3);
+
+  if (face == FaceShaken) {
+    // Gezackter Mund: fünf Punkte auf und ab. Der Knick allein sagt schon
+    // "unangenehm", die Zacken machen daraus ein Zähneknirschen.
+    GPoint mouth[5] = {
+      prv_gp(-14, fy + 9), prv_gp(-8, fy + 4), prv_gp(-3, fy + 11),
+      prv_gp(3, fy + 4), prv_gp(9, fy + 9),
+    };
+    prv_polyline(ctx, mouth, 5);
+  } else {
+    GPoint mouth[3] = { prv_gp(-14, fy + 6), prv_gp(-3, fy + 12), prv_gp(8, fy + 6) };
+    prv_polyline(ctx, mouth, 3);
+  }
 }
 
 // Die Kapsel: ein Stadion-Umriss, obere Hälfte rot, untere weiss.
@@ -111,7 +143,7 @@ static void prv_face(GContext *ctx) {
 // dessen: erst das Ganze weiss, dann die obere Hälfte als Rechteck mit NUR
 // oben runden Ecken darüber. Das trifft die Kapselform genau, weil der Radius
 // gleich der halben Breite ist.
-static void prv_draw_pill(GContext *ctx) {
+static void prv_draw_pill(GContext *ctx, Face face) {
   const int16_t hw = prv_len(HALF_W);
   const int16_t hh = prv_len(HALF_H);
   if (hw < 2 || hh < 2) return;
@@ -133,7 +165,7 @@ static void prv_draw_pill(GContext *ctx) {
   graphics_context_set_stroke_width(ctx, s_g.stroke);
   graphics_draw_round_rect(ctx, full, hw);
 
-  prv_face(ctx);
+  prv_face(ctx, face);
 }
 
 // Strahlenkranz: zwölf Striche nach aussen, abwechselnd lang und kurz, dazu
@@ -183,12 +215,10 @@ static void prv_draw(Layer *layer, GContext *ctx) {
   GPoint c = s_anchor;
   int32_t scale = 1000;
 
-  if (s_p >= POP_END && s_p < NOD_END) {
-    // Nicken: ein Lebenszeichen, sonst stünde sie nur da. Nach oben und unten,
-    // nicht seitlich - seitlich sähe aus wie das Schütteln des Glases beim
-    // Leeren, und hier wird nichts geleert.
-    const int32_t ms = (s_p - POP_END) * FX_MS / 1000;
-    c.y += ((ms / NOD_MS) % 2) ? NOD_PX : -NOD_PX;
+  if (s_p >= HOLD_END && s_p < SHAKE_END) {
+    // Geschüttelt: seitlich, damit es sich vom Aufploppen unterscheidet.
+    const int32_t ms = (s_p - HOLD_END) * FX_MS / 1000;
+    c.x += ((ms / SHAKE_MS) % 2) ? SHAKE_PX : -SHAKE_PX;
   }
 
   if (s_p < POP_END) {
@@ -196,8 +226,8 @@ static void prv_draw(Layer *layer, GContext *ctx) {
     const int32_t t = s_p * 1000 / POP_END;
     scale = t < 600 ? 1150 * prv_smooth(t * 1000 / 600) / 1000
                     : 1150 - 150 * (t - 600) / 400;
-  } else if (s_p >= NOD_END && s_p < SHRINK_END) {
-    const int32_t t = (s_p - NOD_END) * 1000 / (SHRINK_END - NOD_END);
+  } else if (s_p >= SMILE_END && s_p < SHRINK_END) {
+    const int32_t t = (s_p - SMILE_END) * 1000 / (SHRINK_END - SMILE_END);
     scale = 1000 - t * t / 1000;                                    // beschleunigt
   }
   prv_set_metrics(c, s_width, scale);
@@ -205,7 +235,8 @@ static void prv_draw(Layer *layer, GContext *ctx) {
   if (s_p < SHRINK_END) {
     // Das letzte Zwergenexemplar sparen wir uns - unter dieser Grösse ist es
     // nur noch ein Fleck, und der Strahlenkranz kommt ohnehin gleich.
-    if (scale > 60) prv_draw_pill(ctx);
+    const bool shaken = (s_p >= HOLD_END && s_p < SHAKE_END);
+    if (scale > 60) prv_draw_pill(ctx, shaken ? FaceShaken : FaceSmile);
   } else {
     prv_draw_burst(ctx, (s_p - SHRINK_END) * 1000 / (1000 - SHRINK_END));
   }
@@ -213,7 +244,7 @@ static void prv_draw(Layer *layer, GContext *ctx) {
 
 void pill_fx_draw_still(GContext *ctx, GPoint center, int16_t width) {
   prv_set_metrics(center, width, 1000);
-  prv_draw_pill(ctx);
+  prv_draw_pill(ctx, FaceSmile);
 }
 
 static void prv_update(Animation *animation, const AnimationProgress progress) {
