@@ -2,21 +2,24 @@
 """App-Symbol: Pilly, die Kapsel (25x25).
 
 Aufruf: make_app_icon.py <zielordner>
-Erzeugt system_icon.png - schwarze Konturlinie auf durchsichtigem Grund.
+Erzeugt system_icon.png - schwarze Linien auf durchsichtigem Grund.
 
 Dieselbe Form wie src/c/pill_fx.c, nur ohne Gesicht: bei 25 Punkten waeren
-Augen und Mund drei graue Flecken, die alles verschmieren. Was Pilly bei
-dieser Groesse erkennbar macht, ist die geteilte Kapsel, nicht die Miene.
+Augen und Mund drei Flecken, die alles verschmieren. Was Pilly bei dieser
+Groesse erkennbar macht, ist die geteilte Kapsel, nicht die Miene.
 
-NUR UMRISS, KEINE FLAECHE. Der Starter zeichnet Symbole einfarbig: eine rote
-Kapsel und ein violettes Herz kamen dort beide als graue Flecken heraus
-(nachgemessen im Emulator). Eine Linie traegt bei 25 Punkten mehr Form als
-eine Flaeche - und alle Symbole der Familie sehen damit gleich aus.
+MASSSTAB IST DAS SYSTEMSYMBOL. Die Uhr-Kachel von "Watchfeces" im Starter wurde
+Punkt fuer Punkt nachgemessen: 24 von 25 Punkten hoch, Linien 2 bis 3 Punkte
+stark, rund 180 schwarze Punkte. Danach richten sich Groesse und Strichstaerke
+hier - eine duennere Linie sieht daneben aus wie ein Versehen.
 
-DESHALB AUCH KEINE ~bw-FASSUNG: sie waere Punkt fuer Punkt dieselbe Datei.
+NUR LINIEN, KEINE FLAECHE, und keine ~bw-Fassung. Der Starter zeichnet Symbole
+einfarbig: eine farbige Flaeche kam dort als grauer Fleck heraus (im Emulator
+nachgemessen - Rot 255,0,0 wurde zu Grau 171,171,171). Eine schwarze Linie ist
+auf jeder Uhr dieselbe Datei.
 
 Die Teilungslinie gehoert dazu: ohne sie waere es ein abgerundetes Rechteck
-und keine Kapsel.
+und keine Kapsel. Sie ist so stark wie die Kontur.
 """
 import os
 import struct
@@ -25,11 +28,15 @@ import zlib
 
 W = H = 25
 SS = 4                           # Ueberabtastung je Achse
+# Drei statt zwei: die Kapsel ist mit 14 Punkten nur halb so breit wie die
+# Systemuhr, ihr Umriss ist also entsprechend kuerzer. Mit zwei Punkten Linie
+# kam sie auf 128 schwarze Punkte gegen 180 beim Vorbild und wirkte daneben
+# blass. Das Vorbild selbst hat 2 bis 3 - drei bleibt im Rahmen.
+LINE = 3                         # Strichstaerke in Punkten
 
 CX, CY = 12.0, 12.0              # Mitte
-HW = 6.0                         # halbe Breite
-HH = 11.0                        # halbe Hoehe
-
+HW = 7.0                         # halbe Breite
+HH = 11.5                        # halbe Hoehe
 
 
 def png(path, w, h, rows):
@@ -45,16 +52,70 @@ def png(path, w, h, rows):
         f.write(out)
 
 
-def in_circle(x, y, cx, cy, r):
-    return (x - cx) ** 2 + (y - cy) ** 2 <= r * r
+def raster(test):
+    """Vierfach ueberabtasten, bei halber Deckung schneiden. Harte Kanten."""
+    grid = []
+    for py in range(H):
+        row = []
+        for px in range(W):
+            hits = 0
+            for sy in range(SS):
+                for sx in range(SS):
+                    if test(px + (sx + 0.5) / SS, py + (sy + 0.5) / SS):
+                        hits += 1
+            row.append(hits * 2 >= SS * SS)
+        grid.append(row)
+    return grid
 
 
-def in_triangle(x, y, a, b, c):
-    """Liegt der Punkt im Dreieck? Ueber das Vorzeichen der drei Kanten."""
-    def side(p, q):
-        return (q[0] - p[0]) * (y - p[1]) - (q[1] - p[1]) * (x - p[0])
-    d1, d2, d3 = side(a, b), side(b, c), side(c, a)
-    return not ((d1 < 0 or d2 < 0 or d3 < 0) and (d1 > 0 or d2 > 0 or d3 > 0))
+def write(dest, grid):
+    rows = []
+    for y in range(H):
+        r = []
+        for x in range(W):
+            r += [0, 0, 0, 255] if grid[y][x] else [0, 0, 0, 0]
+        rows.append(r)
+    png(os.path.join(dest, "system_icon.png"), W, H, rows)
+    old = os.path.join(dest, "system_icon~bw.png")
+    if os.path.exists(old):
+        os.remove(old)
+        print("system_icon~bw.png entfernt - die Linie gilt fuer alle Uhren")
+    n = sum(1 for r in grid for v in r if v)
+    ys = [y for y in range(H) if any(grid[y])]
+    print("system_icon.png: %d Punkte schwarz, %d hoch (Vorbild: 180 / 24)"
+          % (n, (ys[-1] - ys[0] + 1) if ys else 0))
+
+
+def erode(grid, n):
+    """n-mal den Rand abtragen."""
+    cur = grid
+    for _ in range(n):
+        nxt = []
+        for y in range(H):
+            row = []
+            for x in range(W):
+                keep = cur[y][x]
+                if keep:
+                    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        nx, ny = x + dx, y + dy
+                        if nx < 0 or ny < 0 or nx >= W or ny >= H or not cur[ny][nx]:
+                            keep = False
+                            break
+                row.append(keep)
+            nxt.append(row)
+        cur = nxt
+    return cur
+
+
+def ring(grid, thick):
+    """Der Rand der Form, thick Punkte stark.
+
+    Gerechnet als Flaeche minus abgetragener Flaeche - so ist die Linie ueberall
+    gleich stark, auch in flachen Winkeln, wo ein Nachbarschaftstest duenner
+    wuerde.
+    """
+    inner = erode(grid, thick)
+    return [[grid[y][x] and not inner[y][x] for x in range(W)] for y in range(H)]
 
 
 def inside(x, y):
@@ -72,74 +133,19 @@ def inside(x, y):
     return (dx * dx + dy * dy) ** 0.5 <= HW
 
 
-
-def solid():
-    """Die gefuellte Form, vierfach ueberabgetastet und bei halber Deckung
-    geschnitten. Harte Kanten, keine Zwischentoene - so halten es die
-    Schwesterapps."""
-    grid = []
-    for py in range(H):
-        row = []
-        for px in range(W):
-            hits = 0
-            for sy in range(SS):
-                for sx in range(SS):
-                    if inside(px + (sx + 0.5) / SS, py + (sy + 0.5) / SS):
-                        hits += 1
-            row.append(hits * 2 >= SS * SS)
-        grid.append(row)
-    return grid
-
-
-def outline(grid):
-    """Der Rand der Form: gefuellte Punkte, die an einen freien grenzen.
-
-    Auf Bildpunktebene gerechnet, nicht durch Schrumpfen der Flaeche - so ist
-    die Linie ueberall GENAU einen Punkt breit, auch in flachen Winkeln.
-    """
-    out = []
-    for y in range(H):
-        row = []
-        for x in range(W):
-            if not grid[y][x]:
-                row.append(False)
-                continue
-            edge = False
-            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-                nx, ny = x + dx, y + dy
-                if nx < 0 or ny < 0 or nx >= W or ny >= H or not grid[ny][nx]:
-                    edge = True
-                    break
-            row.append(edge)
-        out.append(row)
-    return out
-
-
 def main():
     dest = sys.argv[1] if len(sys.argv) > 1 else "resources/images"
     os.makedirs(dest, exist_ok=True)
-    grid = solid()
-    line = outline(grid)
-    # Teilungslinie quer durch die Kapsel, auf halber Hoehe.
+    solid = raster(inside)
+    line = ring(solid, LINE)
+    # Teilungslinie quer durch die Kapsel, mittig und gleich stark.
     mid = int(round(CY))
-    for x in range(W):
-        if grid[mid][x]:
-            line[mid][x] = True
-
-    rows = []
-    for y in range(H):
-        r = []
+    for dy in range(LINE):
+        y = mid - LINE // 2 + dy
         for x in range(W):
-            r += [0, 0, 0, 255] if line[y][x] else [0, 0, 0, 0]
-        rows.append(r)
-    png(os.path.join(dest, "system_icon.png"), W, H, rows)
-    # Eine alte ~bw-Fassung waere jetzt identisch und nur noch Ballast.
-    old = os.path.join(dest, "system_icon~bw.png")
-    if os.path.exists(old):
-        os.remove(old)
-        print("system_icon~bw.png entfernt - die Kontur gilt fuer alle Uhren")
-    print("system_icon.png: %dx%d, %d Punkte Linie"
-          % (W, H, sum(1 for r in line for v in r if v)))
+            if solid[y][x]:
+                line[y][x] = True
+    write(dest, line)
 
 
 if __name__ == "__main__":
