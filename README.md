@@ -335,6 +335,31 @@ fallen drei Prüfungen; nimmt man den Zustand aus der Signatur, zwei.
 Ashwagandha haben dort keine Felder, und beim Multivitamin fehlen ausgerechnet
 B6 und B12.
 
+## Store-Symbole
+
+Der Appstore nimmt **nichts aus der `.pbw`**. Das `menuIcon` darin ist das
+Symbol im Starter der Uhr; für die Store-Liste liegen im Entwicklerportal zwei
+eigene Bilder, `icon_large` und `icon_small`. Ein Watchface braucht sie nicht,
+eine Watchapp schon.
+
+Angefordert werden sie in festen Massen — gross **80×80** und **144×144**,
+klein **28×28** und **48×48** —, jeweils mit `exact` in der Adresse: die Masse
+werden **erzwungen, nicht eingepasst**. Etwas Nicht-Quadratisches kommt verzogen
+zurück. Das grosse Symbol legt der Store ausserdem für sein Teilen-Bild durch
+eine abgerundete Maske — darum eine gefüllte Kachel und keine freistehende
+Linie.
+
+In [store/](store/) liegen `icon-144.png` und `icon-48.png`:
+
+```bash
+python3 tools/make_app_icon.py --store store
+```
+
+Sie entstehen aus **derselben Formbeschreibung** wie das 25×25 der Uhr — alle
+Masse gelten auf einem Raster von 25 Punkten und werden hochgerechnet. Ohne
+`--store` erzeugt dasselbe Werkzeug weiterhin Punkt für Punkt das alte
+`system_icon.png`; dass es das wirklich tut, ist byteweise nachgeprüft.
+
 ## Lizenz
 
 Gemeinfrei, [CC0 1.0](LICENSE). Kopieren, ändern, verkaufen, einbauen — ohne
