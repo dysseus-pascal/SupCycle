@@ -25,6 +25,33 @@ static time_t prv_midnight(time_t t) {
   return t - (lt->tm_hour * 3600 + lt->tm_min * 60 + lt->tm_sec);
 }
 
+/**
+ * Ist zu dieser Minute ueberhaupt noch etwas offen?
+ *
+ * NUR FUER HEUTE eine Frage - morgen ist noch nichts abgehakt.
+ *
+ * Ohne diese Pruefung stand auf eine schon erledigte Runde weiter ein Wecker.
+ * Er feuerte, oeffnete die App, das Erinnerungsfenster fand nichts zu zeigen
+ * und erschien gar nicht - und zurueck blieb der HEUTE-SCHIRM. Dort steht
+ * Abgehaktes durchgestrichen mit, und genau so sah es aus, als waere die
+ * Morgenrunde am Mittag wieder faellig.
+ *
+ * prv_take im Erinnerungsfenster stellt die Wecker nach dem Abhaken neu und
+ * schreibt dazu "die eben abgehakten sollen heute nicht nochmal klopfen".
+ * Dieses Versprechen wurde hier nie eingeloest: der Weckplan sah nur, WANN
+ * etwas faellig ist, nie OB es noch aussteht.
+ */
+static bool prv_noch_offen(int32_t the_day, int minute, bool heute) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    const PlanItem *it = plan_item(i);
+    if (!it || !it->used) continue;
+    if (it->hour * 60 + it->minute != minute) continue;
+    if (!plan_due_on(i, the_day)) continue;
+    if (!heute || !plan_taken(i)) return true;
+  }
+  return false;
+}
+
 void remind_schedule(time_t snooze_at) {
   const time_t now = time(NULL);
   wakeup_cancel_all();
@@ -71,6 +98,9 @@ void remind_schedule(time_t snooze_at) {
       }
       if (best < 0) break;
       last_minute = best;
+
+      // Heute schon erledigt? Dann kein Wecker. Siehe prv_noch_offen.
+      if (!prv_noch_offen(the_day, best, day == 0)) continue;
 
       const time_t at = midnight + day * 86400 + (time_t)best * 60;
       if (at <= now + LEAD_S) continue;     // heute schon vorbei

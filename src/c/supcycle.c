@@ -54,11 +54,23 @@ static void prv_init(void) {
   main_window_push();
 
   // Hat uns ein Wecker geoeffnet, sofort erinnern. Das Fenster legt sich ueber
-  // den Hauptschirm; ist nichts mehr offen, erscheint es gar nicht.
+  // den Hauptschirm.
   const int minute = remind_launch_minute();
   if (minute != -1) {
     APP_LOG(APP_LOG_LEVEL_INFO, "Vom Wecker geoeffnet (Minute %d)", minute);
-    reminder_window_push(minute);
+    if (!reminder_window_push(minute)) {
+      // NICHTS ZU ZEIGEN, ALSO NICHTS ZU OEFFNEN. Ohne diesen Ausgang blieb
+      // die App auf dem Heute-Schirm stehen - und dort steht Abgehaktes
+      // durchgestrichen mit. Wer die Runde schon von Hand abgehakt hatte, sah
+      // sie so zur Weckzeit wieder vor sich und hielt sie fuer erneut faellig.
+      //
+      // Seit remind_schedule erledigte Runden ueberspringt, sollte dieser Fall
+      // gar nicht mehr eintreten. Der Riegel bleibt trotzdem: ein Wecker kann
+      // aus einem aelteren Weckplan stammen, den diese Fassung nie gestellt
+      // hat.
+      APP_LOG(APP_LOG_LEVEL_INFO, "Nichts offen - App bleibt zu");
+      window_stack_pop_all(false);
+    }
   }
 
   // Wecker bei JEDEM Start neu stellen: so haelt sich der Weckplan selbst

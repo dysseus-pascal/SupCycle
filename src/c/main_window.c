@@ -4,6 +4,7 @@
 #include "pill_fx.h"
 #include "plan.h"
 #include "prefs.h"
+#include "remind.h"
 #include "strings.h"
 
 // Ein Fenster, zwei Ansichten — mehr braucht es nicht:
@@ -464,6 +465,12 @@ static void prv_select(ClickRecognizerRef recognizer, void *context) {
   const bool taken = plan_taken(s_sel);
   plan_set_taken(s_sel, !taken);
   phone_send_today();     // Pin nachziehen
+  // WECKER NACHZIEHEN, genau wie es die Erinnerung nach "Genommen" tut. Wer
+  // hier abhakt, bevor der Wecker laeuft, wurde sonst trotzdem geweckt: das
+  // Erinnerungsfenster fand nichts zu zeigen, erschien gar nicht - und die App
+  // stand offen auf diesem Schirm, auf dem das Abgehakte durchgestrichen
+  // mitsteht. Es sah aus, als waere die Runde wieder faellig.
+  remind_schedule(0);
 
   if (!taken) {
     // Genommen: Pilly spielt. Beim Zurücknehmen nicht - eine Feier für einen

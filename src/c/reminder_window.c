@@ -204,10 +204,10 @@ static void prv_unload(Window *window) {
   s_bar = NULL;
 }
 
-void reminder_window_push(int minute) {
-  if (s_window) return;
+bool reminder_window_push(int minute) {
+  if (s_window) return true;
   s_minute = minute;
-  if (prv_batch_count() == 0) return;   // nichts offen: gar nicht erst zeigen
+  if (prv_batch_count() == 0) return false;  // nichts offen: gar nicht erst zeigen
 
   s_playing = false;
   s_window = window_create();
@@ -216,4 +216,5 @@ void reminder_window_push(int minute) {
     .load = prv_load, .appear = prv_appear, .unload = prv_unload,
   });
   window_stack_push(s_window, true);
+  return true;
 }

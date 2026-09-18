@@ -268,6 +268,25 @@ nicht zwei Erinnerungen. Und ist zu dieser Zeit schon alles genommen, erscheint
 gar nichts — eine Erinnerung an etwas bereits Genommenes wäre schlimmer als
 keine.
 
+**Auf eine erledigte Runde wird gar kein Wecker mehr gestellt.** Das klingt
+selbstverständlich und war es bis 0.9.0 nicht: der Weckplan sah nur, *wann*
+etwas fällig ist, nie *ob* es noch aussteht. Wer seine Morgenrunde vor acht Uhr
+von Hand abhakte, wurde um acht trotzdem geweckt. Die Erinnerung fand dann
+nichts zu zeigen und erschien nicht — aber die App war offen, und stehen blieb
+der **Heute-Schirm**, auf dem Abgehaktes durchgestrichen mitsteht. Das las sich
+wie „schon wieder fällig".
+
+Die beiden Schirme sind verschiedene Dinge, und das soll man ihnen ansehen:
+die **Erinnerung** zeigt nur, was gerade zu nehmen ist. Was schon genommen
+wurde, steht auf dem **Heute-Schirm** — dann aber, weil man ihn selbst geöffnet
+hat.
+
+Abhaken auf dem Heute-Schirm stellt die Wecker deshalb neu, genau wie das
+Abhaken in der Erinnerung es immer schon tat. Und käme doch ein Wecker ohne
+etwas zu zeigen — etwa einer aus einem älteren Weckplan, den diese Fassung nie
+gestellt hat —, schliesst sich die App sofort wieder, statt den Heute-Schirm
+stehen zu lassen.
+
 **In der Pause schweigt die Uhr.** Sonst hakt man aus Gewohnheit ab, und der
 Zyklus ist wertlos.
 
