@@ -5,7 +5,15 @@
 
 // Sechs Eintraege zu je 25 Byte plus Kopf. 256 laesst Luft.
 #define INBOX_SIZE  256
-#define OUTBOX_SIZE 64
+// Der Postausgang traegt seit 0.10.0 auch die Namen: sechs mal sechzehn
+// Byte plus Trenner sind gut hundert, dazu drei Zahlen und die Koepfe.
+// 64 reichten fuer die Zahlen allein und fuer nichts sonst.
+#define OUTBOX_SIZE 256
+
+// Alle sechs Plaetze, durch Zeilenumbruch getrennt - auch die leeren.
+// DIE STELLE IST DIE AUSSAGE: die Bitmasken zaehlen Plaetze, nicht
+// Eintraege. Wer die leeren weglaesst, verschiebt jeden Namen dahinter.
+#define NAMEN_BYTES (SC_MAX_ITEMS * (SC_NAME_LEN + 1))
 
 static void (*s_observer)(void);
 static AppTimer *s_retry;
@@ -25,6 +33,31 @@ static int32_t prv_tuple_int(const Tuple *t) {
     return (int32_t)t->value->uint32;
   }
   return 0;
+}
+
+// Die Namen aneinanderreihen, mit Zeilenumbruch dazwischen.
+static void prv_namen(char *aus, size_t platz) {
+  size_t len = 0;
+  aus[0] = '\0';
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (i > 0 && len + 1 < platz) {
+      aus[len++] = '\n';
+      aus[len] = '\0';
+    }
+    const PlanItem *it = plan_item(i);
+    if (!it || !it->used) continue;
+    // name[] ist ein festes Feld und muss nicht abgeschlossen sein - erst
+    // eine eigene Abschrift macht daraus eine Zeichenkette.
+    char name[SC_NAME_LEN + 1];
+    memcpy(name, it->name, SC_NAME_LEN);
+    name[SC_NAME_LEN] = '\0';
+    const size_t n = strlen(name);
+    if (len + n < platz) {
+      memcpy(aus + len, name, n);
+      len += n;
+      aus[len] = '\0';
+    }
+  }
 }
 
 static void prv_inbox(DictionaryIterator *iter, void *context) {
@@ -77,6 +110,12 @@ void phone_send_today(void) {
   dict_write_int32(out, MESSAGE_KEY_TODAY, ymd);
   dict_write_int32(out, MESSAGE_KEY_DUE, (int32_t)due);
   dict_write_int32(out, MESSAGE_KEY_TAKEN, (int32_t)taken);
+  // Die Namen dazu. Das Telefon kennt sie zwar aus der Konfigseite, aber
+  // NICHT jede App auf dem Telefon: Kiesel-Helper hoert denselben Broadcast
+  // mit und haette sonst nur Bitmasken ohne Beschriftung.
+  char namen[NAMEN_BYTES];
+  prv_namen(namen, sizeof(namen));
+  dict_write_cstring(out, MESSAGE_KEY_NAMES, namen);
   app_message_outbox_send();
 }
 

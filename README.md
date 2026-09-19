@@ -343,6 +343,27 @@ Telefon rechnete sie über UTC zurück — bei positiver Zeitzone landete der Pi
 einen Tag zu früh, also in der Vergangenheit. Der Prüfstand hat das gefunden,
 bevor es eine Uhr gesehen hat.
 
+## Und noch jemand hört mit
+
+Seit 0.10.0 gehen mit derselben Meldung auch die **Namen** hinaus — alle sechs
+Plätze, durch Zeilenumbruch getrennt, auch die leeren.
+
+Für die Timeline-Pins braucht es sie nicht; die Telefonseite hat den Plan ja
+selbst gebaut. Sie sind für [Kiesel-Helper](https://github.com/dysseus-pascal/Kiesel-Helper):
+die App hört denselben Broadcast mit und zeigt neben Wasser und Schlaf, was
+heute ansteht. Ohne Namen hätte sie nur Bitmasken und könnte zählen, aber
+nichts benennen.
+
+**Die leeren Plätze müssen mit.** Die Bitmasken zählen Plätze, nicht Einträge —
+wer die leeren wegliesse, verschöbe jeden Namen dahinter, und das Magnesium
+hiesse dann Zink.
+
+Der Schlüssel steht am **Ende** der `messageKeys`. Irgendwo dazwischen hätte
+alle folgenden Nummern verrutschen lassen, und die mithörende App trüge still
+Unsinn ein. Der Postausgang wuchs dafür von 64 auf 256 Byte: sechs mal sechzehn
+Byte Name plus Trenner sind gut hundert, und 64 reichten für die drei Zahlen
+allein.
+
 Geprüft mit `tools/pkjs_pin_test.js` (22 Prüfungen): Kennung, Zeitpunkt,
 Symbole, und dass ein unveränderter Pin **nicht** erneut hinausgeht, ein
 abgehakter aber schon. Gegenprobe gemacht — nimmt man den Tag aus der Kennung,
