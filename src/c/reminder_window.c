@@ -222,7 +222,10 @@ static void prv_load(Window *window) {
   }
   action_bar_layer_add_to_window(s_bar, window);
 
-  s_vibes_left = VIBE_PULSES;
+  // IN DER RUHEZEIT BLEIBT DIE UHR STILL. Der Schirm kommt trotzdem - wer
+  // hinsieht, sieht die Erinnerung; wer schlaeft, wird nicht geweckt.
+  // quiet_time_is_active kennt Kalender und Schalter, wie in Drinktervall.
+  s_vibes_left = quiet_time_is_active() ? 0 : VIBE_PULSES;
   prv_vibe_cb(NULL);
 }
 

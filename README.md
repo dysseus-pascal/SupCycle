@@ -269,6 +269,8 @@ absichtlich in verschiedenen Phasen — eines in der Einnahme, eines in der Paus
 Zur eingetragenen Uhrzeit meldet sich die Uhr: ein Vollbild mit der Kapsel, der
 Uhrzeit und dem, was ansteht. Dreimal doppelt vibrieren im Abstand von zwanzig
 Sekunden, dann Ruhe — wer nicht hinsieht, soll nicht endlos gerüttelt werden.
+In der **Ruhezeit** der Uhr (`quiet_time_is_active`) bleibt das Vibrieren
+ganz aus; der Schirm kommt trotzdem.
 
 | Taste | Aktion |
 |---|---|
