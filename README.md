@@ -260,13 +260,37 @@ Sekunden, dann Ruhe — wer nicht hinsieht, soll nicht endlos gerüttelt werden.
 | Taste | Aktion |
 |---|---|
 | Mitte | genommen — abhaken, Kapsel zerplatzt, App schliesst |
-| Unten | später — in 15 Minuten nochmal |
-| Zurück | wegdrücken, ohne zu zählen |
+| Unten | später — in 15 Minuten nochmal, höchstens dreimal |
+| Zurück | wegdrücken — die Runde verfällt, die App schliesst |
 
 Zwei Präparate zur selben Uhrzeit ergeben **eine** Erinnerung mit zwei Zeilen,
 nicht zwei Erinnerungen. Und ist zu dieser Zeit schon alles genommen, erscheint
 gar nichts — eine Erinnerung an etwas bereits Genommenes wäre schlimmer als
 keine.
+
+### Eine Erinnerung gilt einer Runde
+
+**„Später" gehört zur Runde, nicht zum Tag.** Wer die Morgenrunde aufschiebt,
+bekommt in fünfzehn Minuten die Morgenrunde nochmal — und nur die. Die
+Mittagsrunde hat ihren eigenen Wecker und zeigt nur, was mittags ansteht. Bis
+0.10.0 zeigte die Erinnerung nach einem Aufschub *alles*, was gerade offen war;
+so trug die Mittagsrunde den Morgen nach, den man bewusst hatte liegen lassen.
+
+**Höchstens dreimal.** Wer dreimal „später" sagt, meint „heute nicht": beim
+vierten Druck verfällt die Runde wie beim Wegdrücken, und das Zeichen für
+„später" ist dann schon aus der Leiste verschwunden. Unten auf dem Schirm steht,
+der wievielte Aufschub es ist.
+
+**Der Aufschub überlebt einen Neustart.** Er liegt im Persist. Bis 0.10.0
+stand er nur als Wecker — und weil die App bei jedem Start alle Wecker neu
+stellt, fiel er weg, sobald irgendein anderer Wecker die App dazwischen
+öffnete. Ein „später" am Morgen kam so manchmal nie wieder.
+
+**Wegdrücken schliesst die App.** Zurück auf der Erinnerung heisst „nicht jetzt
+und nicht nachfragen": kein Aufschub, keine weitere Erinnerung zu dieser Runde,
+und die App geht zu — nicht auf den Heute-Schirm. Was liegen blieb, steht dort
+weiter offen und lässt sich **nachholen**: App öffnen, Eintrag wählen, Mitte.
+So wie in Drinktervall ein Glas nachgetragen wird. Um Mitternacht verfällt es.
 
 **Auf eine erledigte Runde wird gar kein Wecker mehr gestellt.** Das klingt
 selbstverständlich und war es bis 0.9.0 nicht: der Weckplan sah nur, *wann*

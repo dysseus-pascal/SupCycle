@@ -33,7 +33,7 @@ static void prv_glance_reload(AppGlanceReloadSession *session, size_t limit, voi
 // Ein neuer Plan aendert, wann und ob erinnert wird - die Wecker muessen mit.
 static void prv_plan_changed(void) {
   main_window_refresh();
-  remind_schedule(0);
+  remind_schedule();
 }
 
 static void prv_init(void) {
@@ -54,7 +54,7 @@ static void prv_init(void) {
   main_window_push();
 
   // Hat uns ein Wecker geoeffnet, sofort erinnern. Das Fenster legt sich ueber
-  // den Hauptschirm.
+  // den Hauptschirm; bei einem Aufschub gilt es der aufgeschobenen Runde.
   const int minute = remind_launch_minute();
   if (minute != -1) {
     APP_LOG(APP_LOG_LEVEL_INFO, "Vom Wecker geoeffnet (Minute %d)", minute);
@@ -76,7 +76,7 @@ static void prv_init(void) {
   // Wecker bei JEDEM Start neu stellen: so haelt sich der Weckplan selbst
   // aktuell, auch nach einem Neustart der Uhr, einer Zeitumstellung oder einem
   // Zyklus, der ueber Nacht in die Pause gewechselt ist.
-  remind_schedule(0);
+  remind_schedule();
 }
 
 static void prv_deinit(void) {

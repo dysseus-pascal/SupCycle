@@ -33,6 +33,10 @@ STR(STR_HINT_TAKE,   14,  "Take",               "Nehmen")
 STR(STR_HINT_UNDO,   14,  "Undo",               "Zurück")
 STR(STR_HINT_BACK,   14,  "Today",              "Heute")
 
+// --- Erinnerung ---
+STR(STR_SNOOZE_FMT,  24,  "Snoozed %d of %d",   "Aufschub %d von %d")
+STR(STR_SNOOZE_LAST, 24,  "Last snooze",        "Letzter Aufschub")
+
 // --- App-Glance im Starter ---
 STR(STR_GLANCE_OPEN, 48,  "%d of %d still open", "%d von %d noch offen")
 STR(STR_GLANCE_DONE, 48,  "All taken today",    "Heute alles genommen")

@@ -15,8 +15,14 @@
 // gleichzeitig sind keine zwei Erinnerungen, sondern eine mit zwei Zeilen.
 //
 //   Mitte   genommen: alles abhaken, Kapsel zerplatzt, App schliesst
-//   Unten   später: in SC_SNOOZE_MIN Minuten nochmal
-//   Zurück  wegdrücken, ohne zu zählen
+//   Unten   später: in SC_SNOOZE_MIN Minuten nochmal - höchstens
+//           SC_SNOOZE_MAX mal, danach verfällt die Runde wie beim Wegdrücken
+//   Zurück  wegdrücken: die Runde verfällt, die App schliesst. Was liegen
+//           blieb, steht auf dem Heute-Schirm und lässt sich dort nachholen.
+//
+// EINE ERINNERUNG GILT EINER RUNDE. Auch nach einem Aufschub zeigt sie nur
+// die Präparate ihrer Uhrzeit - die Mittagsrunde soll nicht den Morgen
+// nachtragen, den man bewusst hat liegen lassen.
 
 #define VIBE_PULSES 3
 #define VIBE_GAP_MS 20000
@@ -112,6 +118,19 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
     y += wide ? 30 : 24;
   }
+
+  // Der wievielte Aufschub - und ob es der letzte war. Wer es sieht, weiss,
+  // dass "spaeter" beim naechsten Mal "heute nicht" heisst.
+  const int count = remind_snooze_count(s_minute);
+  if (count > 0) {
+    char note[24];
+    if (count >= SC_SNOOZE_MAX) snprintf(note, sizeof(note), "%s", S(STR_SNOOZE_LAST));
+    else snprintf(note, sizeof(note), S(STR_SNOOZE_FMT), count, SC_SNOOZE_MAX);
+    graphics_context_set_text_color(ctx, SC_COLOR_SUB);
+    graphics_draw_text(ctx, note, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                       GRect(margin, b.size.h - PBL_IF_ROUND_ELSE(44, 20), col_w, 16),
+                       GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+  }
 }
 
 static void prv_close(void) {
@@ -131,8 +150,9 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
     if (prv_in_batch(i)) plan_set_taken(i, true);
   }
   // Wecker neu stellen: die eben abgehakten sollen heute nicht nochmal
-  // klopfen, falls noch ein Wecker auf dieselbe Minute steht.
-  remind_schedule(0);
+  // klopfen - auch nicht ueber einen offenen Aufschub.
+  remind_snooze_clear();
+  remind_schedule();
   phone_send_today();     // Pins als erledigt markieren
 
   // Abgeschaltete Animation heisst NICHT, dass das Fenster stehen bleibt:
@@ -151,16 +171,34 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
   }
 }
 
-static void prv_later(ClickRecognizerRef recognizer, void *context) {
+// Wegdruecken: die Runde verfaellt. Kein Aufschub mehr, keine weitere
+// Erinnerung dazu - und die App geht ZU, nicht auf den Heute-Schirm. Wer
+// nicht nehmen will, will auch nicht die Liste sehen; die kommt, wenn man
+// sie selbst oeffnet, und dort laesst sich nachholen, was liegen blieb.
+static void prv_dismiss(ClickRecognizerRef recognizer, void *context) {
   if (s_playing) return;
   prv_stop_vibes();
-  remind_schedule(time(NULL) + SC_SNOOZE_MIN * 60);
+  remind_snooze_clear();
+  remind_schedule();
+  prv_close();
+}
+
+static void prv_later(ClickRecognizerRef recognizer, void *context) {
+  if (s_playing) return;
+  if (!remind_snooze_left(s_minute)) {
+    // Dreimal "spaeter" heisst "heute nicht": die Runde verfaellt.
+    prv_dismiss(recognizer, context);
+    return;
+  }
+  prv_stop_vibes();
+  remind_snooze(s_minute);
   prv_close();
 }
 
 static void prv_click_config(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_take);
   window_single_click_subscribe(BUTTON_ID_DOWN, prv_later);
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_dismiss);
 }
 
 static void prv_load(Window *window) {
@@ -177,7 +215,11 @@ static void prv_load(Window *window) {
   s_icon_take = gbitmap_create_with_resource(RESOURCE_ID_ICON_CHECK);
   s_icon_later = gbitmap_create_with_resource(RESOURCE_ID_ICON_SNOOZE);
   if (s_icon_take) action_bar_layer_set_icon(s_bar, BUTTON_ID_SELECT, s_icon_take);
-  if (s_icon_later) action_bar_layer_set_icon(s_bar, BUTTON_ID_DOWN, s_icon_later);
+  // Kein Aufschub mehr uebrig: dann steht dort auch kein Zeichen dafuer. Ein
+  // Zeichen fuer eine Taste, die etwas anderes tut, waere eine Luege.
+  if (s_icon_later && remind_snooze_left(s_minute)) {
+    action_bar_layer_set_icon(s_bar, BUTTON_ID_DOWN, s_icon_later);
+  }
   action_bar_layer_add_to_window(s_bar, window);
 
   s_vibes_left = VIBE_PULSES;

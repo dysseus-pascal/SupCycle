@@ -470,7 +470,7 @@ static void prv_select(ClickRecognizerRef recognizer, void *context) {
   // Erinnerungsfenster fand nichts zu zeigen, erschien gar nicht - und die App
   // stand offen auf diesem Schirm, auf dem das Abgehakte durchgestrichen
   // mitsteht. Es sah aus, als waere die Runde wieder faellig.
-  remind_schedule(0);
+  remind_schedule();
 
   if (!taken) {
     // Genommen: Pilly spielt. Beim Zurücknehmen nicht - eine Feier für einen
