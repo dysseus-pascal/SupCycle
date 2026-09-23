@@ -9,6 +9,19 @@ Schrift, dunkle Seitenleiste rechts. Läuft auf emery, flint und gabbro.
 
 ## Screenshots
 
+Drei Uhren, derselbe Schirm — und das ist nicht selbstverstaendlich: 200×228
+in Farbe, 144×168 schwarzweiss, 260×260 rund.
+
+| | emery | flint | gabbro |
+|---|---|---|---|
+| **heute** | ![heute auf emery](screenshots/emery/01-heute.png) | ![heute auf flint](screenshots/flint/01-heute.png) | ![heute auf gabbro](screenshots/gabbro/01-heute.png) |
+| **Erinnerung** | ![Erinnerung auf emery](screenshots/emery/04-erinnerung.png) | ![Erinnerung auf flint](screenshots/flint/04-erinnerung.png) | ![Erinnerung auf gabbro](screenshots/gabbro/04-erinnerung.png) |
+| **Pilly** | ![Pilly auf emery](screenshots/emery/05-kapsel.png) | ![Pilly auf flint](screenshots/flint/05-kapsel.png) | ![Pilly auf gabbro](screenshots/gabbro/05-kapsel.png) |
+
+Auf flint ist Pilly schwarzweiss — die Uhr hat keine Farbe, und ein Raster
+statt Rot waere ein Muster und kein Gesicht. Der ganze Satz liegt je Uhr in
+`screenshots/`; hier die acht Schirme auf emery:
+
 | | | |
 |---|---|---|
 | ![Heute](screenshots/emery/01-heute.png) | ![Auswahl](screenshots/emery/08-auswahl.png) | ![Abgehakt](screenshots/emery/02-abgehakt.png) |
