@@ -3,8 +3,8 @@
 Präparate im Blick behalten: was heute ansteht, und wo die zyklischen gerade in
 ihrem Zyklus stehen.
 
-Die Oberfläche folgt der **Sprache der Uhr** (Deutsch und Englisch, Englisch als
-Rückfall) und dem Timeline-Look der Schwesterapps: weisser Grund, schwarze
+Die Oberfläche folgt der **Sprache der Uhr** (Deutsch, Englisch, Französisch,
+Italienisch und Spanisch, Englisch als Rückfall - siehe [Sprachen](#sprachen)) und dem Timeline-Look der Schwesterapps: weisser Grund, schwarze
 Schrift, dunkle Seitenleiste rechts. Läuft auf emery, flint und gabbro.
 
 ## Screenshots
@@ -454,6 +454,28 @@ Sie entstehen aus **derselben Formbeschreibung** wie das 25×25 der Uhr — alle
 Masse gelten auf einem Raster von 25 Punkten und werden hochgerechnet. Ohne
 `--store` erzeugt dasselbe Werkzeug weiterhin Punkt für Punkt das alte
 `system_icon.png`; dass es das wirklich tut, ist byteweise nachgeprüft.
+
+## Sprachen
+
+Die App liest beim Start `i18n_get_system_locale()` und folgt der Sprache der
+Uhr. Ausgeliefert werden **Englisch**, **Deutsch**, **Französisch**,
+**Italienisch** und **Spanisch**; jede andere Uhrsprache bekommt Englisch.
+Verglichen werden nur die ersten zwei Buchstaben. Einen eigenen Sprachschalter
+gibt es nicht.
+
+Alle Texte der Uhr stehen in `src/c/strings_table.h`, eine Zeile je Text und
+eine Spalte je Sprache (`STR(schluessel, maxbytes, en, de, fr, it, es)`).
+`node tools/strings_check.js` prüft Puffergrenzen, leere Spalten und
+abweichende Formatplatzhalter. Französisch, Italienisch und Spanisch sind oft
+länger; wo die Seitenleiste nur 34 Pixel breit ist oder ein fester Puffer
+wartet, ist die Übersetzung knapper als wörtlich.
+
+Timeline-Pins und Konfigseite werden auf dem Telefon gebaut, und das kennt die
+Uhrsprache nicht von sich aus. Die Uhr meldet sie deshalb als Zahl in
+`MESSAGE_KEY_LANG`: 0 Englisch, 1 Deutsch, 2 Französisch, 3 Italienisch,
+4 Spanisch. Die Reihenfolge ist fest; eine unbekannte Zahl ergibt Englisch.
+Fachbegriffe wie Timeline und Pin bleiben unübersetzt, ebenso die Namen der
+Präparate - die tippt man selbst.
 
 ## Lizenz
 

@@ -9,36 +9,15 @@
 // schreiben. Sechs Zeilen decken jeden Stack ab, den man von Hand pflegt, und
 // ein Platz ohne Namen zählt einfach nicht.
 //
-// Zweisprachig wie die App. Welche Sprache gilt, sagt die UHR per LANG —
+// In fuenf Sprachen wie die App. Welche Sprache gilt, sagt die UHR per LANG —
 // das Telefon kann die Uhrsprache nicht von sich aus erfahren.
 
 var SLOTS = 6;
 
+// Spalte 0 ist ENGLISCH, wie in strings_table.h; danach Deutsch,
+// Franzoesisch, Italienisch, Spanisch - dieselben Nummern, die die Uhr als
+// LANG schickt.
 var TEXT = [
-  {
-    heading: 'SupCycle',
-    intro: 'Was du nimmst, wann, und in welchem Zyklus. Ein Platz ohne Namen ' +
-           'bleibt leer.',
-    count: 'Wie viele Präparate?',
-    slot: 'Präparat',
-    name: 'Name',
-    namePlaceholder: 'z. B. Multivitamin',
-    time: 'Wann',
-    fx: 'Animation beim Abhaken',
-    fxHint: 'Pilly, die Kapsel, spielt wenn alles zu einer Uhrzeit erledigt ist',
-    every: 'Alle wie viel Tage',
-    everyHint: '1 = täglich',
-    weeksOn: 'Wochen Einnahme',
-    weeksOnHint: 'leer = unbegrenzt',
-    weeksOff: 'Wochen Pause',
-    weeksOffHint: 'leer = keine',
-    since: 'Zyklus läuft seit',
-    sinceNow: 'beginnt heute',
-    sinceWeeks: function (n) { return n === 1 ? 'einer Woche' : n + ' Wochen'; },
-    cycleNote: 'Nur bei "zyklisch". In der Pause erinnert die Uhr nicht — ' +
-               'sonst hakst du aus Gewohnheit ab, und der Zyklus ist wertlos.',
-    submit: 'Speichern'
-  },
   {
     heading: 'SupCycle',
     intro: 'What you take, when, and in which cycle. A slot without a name ' +
@@ -59,14 +38,110 @@ var TEXT = [
     since: 'Cycle running for',
     sinceNow: 'starts today',
     sinceWeeks: function (n) { return n === 1 ? 'one week' : n + ' weeks'; },
-    cycleNote: 'Only for "cyclic". During the break the watch stays quiet — ' +
+    cycleNote: 'Only when weeks are entered. During the break the watch stays quiet — ' +
                'otherwise you tick it off out of habit and the cycle is moot.',
     submit: 'Save'
+  },
+  {
+    heading: 'SupCycle',
+    intro: 'Was du nimmst, wann, und in welchem Zyklus. Ein Platz ohne Namen ' +
+           'bleibt leer.',
+    count: 'Wie viele Präparate?',
+    slot: 'Präparat',
+    name: 'Name',
+    namePlaceholder: 'z. B. Multivitamin',
+    time: 'Wann',
+    fx: 'Animation beim Abhaken',
+    fxHint: 'Pilly, die Kapsel, spielt wenn alles zu einer Uhrzeit erledigt ist',
+    every: 'Alle wie viel Tage',
+    everyHint: '1 = täglich',
+    weeksOn: 'Wochen Einnahme',
+    weeksOnHint: 'leer = unbegrenzt',
+    weeksOff: 'Wochen Pause',
+    weeksOffHint: 'leer = keine',
+    since: 'Zyklus läuft seit',
+    sinceNow: 'beginnt heute',
+    sinceWeeks: function (n) { return n === 1 ? 'einer Woche' : n + ' Wochen'; },
+    cycleNote: 'Nur bei eingetragenen Wochen. In der Pause erinnert die Uhr nicht — ' +
+               'sonst hakst du aus Gewohnheit ab, und der Zyklus ist wertlos.',
+    submit: 'Speichern'
+  },
+  {
+    heading: 'SupCycle',
+    intro: 'Ce que tu prends, quand, et selon quel cycle. Un emplacement ' +
+           'sans nom reste vide.',
+    count: 'Combien de compléments\u00a0?',
+    slot: 'Complément',
+    name: 'Nom',
+    namePlaceholder: 'p. ex. multivitamine',
+    time: 'Quand',
+    fx: 'Animation en cochant',
+    fxHint: 'Pilly, la gélule, s\u2019anime quand tout est pris pour une heure donnée',
+    every: 'Tous les combien de jours',
+    everyHint: '1 = tous les jours',
+    weeksOn: 'Semaines de prise',
+    weeksOnHint: 'vide = illimité',
+    weeksOff: 'Semaines de pause',
+    weeksOffHint: 'vide = aucune',
+    since: 'Cycle en cours depuis',
+    sinceNow: 'commence aujourd\u2019hui',
+    sinceWeeks: function (n) { return n === 1 ? 'une semaine' : n + ' semaines'; },
+    cycleNote: 'Seulement si des semaines sont saisies. Pendant la pause, la ' +
+               'montre ne rappelle rien — sinon tu cocherais par habitude, et ' +
+               'le cycle ne servirait à rien.',
+    submit: 'Enregistrer'
+  },
+  {
+    heading: 'SupCycle',
+    intro: 'Cosa prendi, quando e con quale ciclo. Un posto senza nome ' +
+           'resta vuoto.',
+    count: 'Quanti integratori?',
+    slot: 'Integratore',
+    name: 'Nome',
+    namePlaceholder: 'es. multivitaminico',
+    time: 'Quando',
+    fx: 'Animazione alla spunta',
+    fxHint: 'Pilly, la capsula, si anima quando tutto è preso per un orario',
+    every: 'Ogni quanti giorni',
+    everyHint: '1 = ogni giorno',
+    weeksOn: 'Settimane di assunzione',
+    weeksOnHint: 'vuoto = illimitato',
+    weeksOff: 'Settimane di pausa',
+    weeksOffHint: 'vuoto = nessuna',
+    since: 'Ciclo in corso da',
+    sinceNow: 'inizia oggi',
+    sinceWeeks: function (n) { return n === 1 ? 'una settimana' : n + ' settimane'; },
+    cycleNote: 'Solo se sono inserite delle settimane. Durante la pausa ' +
+               'l\u2019orologio non ricorda nulla — altrimenti spunteresti per ' +
+               'abitudine e il ciclo non servirebbe a niente.',
+    submit: 'Salva'
+  },
+  {
+    heading: 'SupCycle',
+    intro: 'Qué tomas, cuándo y con qué ciclo. Un hueco sin nombre se ' +
+           'queda vacío.',
+    count: '¿Cuántos suplementos?',
+    slot: 'Suplemento',
+    name: 'Nombre',
+    namePlaceholder: 'p. ej. multivitamínico',
+    time: 'Cuándo',
+    fx: 'Animación al marcar',
+    fxHint: 'Pilly, la cápsula, se anima cuando todo lo de una hora está tomado',
+    every: 'Cada cuántos días',
+    everyHint: '1 = a diario',
+    weeksOn: 'Semanas de toma',
+    weeksOnHint: 'vacío = sin límite',
+    weeksOff: 'Semanas de pausa',
+    weeksOffHint: 'vacío = ninguna',
+    since: 'Ciclo en marcha desde hace',
+    sinceNow: 'empieza hoy',
+    sinceWeeks: function (n) { return n === 1 ? 'una semana' : n + ' semanas'; },
+    cycleNote: 'Solo si hay semanas anotadas. Durante la pausa el reloj no ' +
+               'avisa — si no, marcarías por costumbre y el ciclo no serviría ' +
+               'de nada.',
+    submit: 'Guardar'
   }
 ];
-// Index 0 ist Deutsch? Nein: Spalte 0 ist ENGLISCH, wie in strings_table.h.
-// Deshalb hier umdrehen, damit TEXT[0] zu lang 0 passt.
-TEXT = [TEXT[1], TEXT[0]];
 
 // Halbstundenraster von 5 bis 23 Uhr. Feiner wäre eine Scheingenauigkeit —
 // niemand nimmt sein Multivitamin um 07:47.

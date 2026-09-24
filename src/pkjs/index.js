@@ -36,7 +36,7 @@ var FORGET_AFTER_MS = 3 * 86400 * 1000;
 
 // Bei JEDER Aenderung am Aussehen erhoehen. Sonst bleiben schon gesendete
 // Pins auf ihrem alten Stand stehen - ihr Zustand hat sich ja nicht geaendert.
-var LOOK_VERSION = 1;
+var LOOK_VERSION = 2;
 
 // Nur Namen aus dem System-Satz erreichen die echte Uhr: die Telefon-App setzt
 // das Symbol ueber eine feste Tabelle, die ausschliesslich "system://images/..."
@@ -45,15 +45,24 @@ var LOOK_VERSION = 1;
 var ICON_DUE = 'system://images/NOTIFICATION_REMINDER';
 var ICON_TAKEN = 'system://images/GENERIC_CONFIRMATION';
 
-// Spalte 0 ist Englisch, wie in strings_table.h.
+// Spalte 0 ist Englisch, wie in strings_table.h; danach 1 Deutsch,
+// 2 Franzoesisch, 3 Italienisch, 4 Spanisch (StringLang in src/c/strings.h).
 var PIN_TEXT = [
   { taken: 'taken', open: 'Open app' },
-  { taken: 'genommen', open: 'App oeffnen' }
+  { taken: 'genommen', open: 'App öffnen' },
+  { taken: 'pris', open: 'Ouvrir l\'app' },
+  { taken: 'preso', open: 'Apri app' },
+  { taken: 'tomado', open: 'Abrir app' }
 ];
 
+// Eine Nummer, die diese Seite nicht kennt (eine neuere Uhr mit mehr
+// Sprachen), bekommt Englisch statt einer leeren Seite.
+function knownLang(v) {
+  return (v >= 1 && v < PIN_TEXT.length) ? v : 0;
+}
+
 function getLang() {
-  var v = parseInt(localStorage.getItem(LANG_KEY), 10);
-  return v === 1 ? 1 : 0;
+  return knownLang(parseInt(localStorage.getItem(LANG_KEY), 10));
 }
 
 // Clay erst bauen, wenn die Seite gebraucht wird: dann steht die Sprache der
@@ -507,7 +516,7 @@ Pebble.addEventListener('appmessage', function (e) {
   // Die Uhr sagt beim Start, in welcher Sprache sie beschriftet ist, und
   // fragt zugleich nach dem Plan.
   if (p.LANG !== undefined) {
-    try { localStorage.setItem(LANG_KEY, String(p.LANG === 1 ? 1 : 0)); } catch (err) {}
+    try { localStorage.setItem(LANG_KEY, String(knownLang(parseInt(p.LANG, 10)))); } catch (err) {}
   }
   var watchPlan = (p.PLAN !== undefined && p.PLAN.length) ? p.PLAN : null;
   if (p.REQUEST !== undefined) {
