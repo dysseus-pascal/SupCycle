@@ -46,6 +46,10 @@ void plan_init(void);
 bool plan_set_from_bytes(const uint8_t *data, uint16_t len);
 
 int plan_count(void);                    //< benutzte Einträge, 0..SC_MAX_ITEMS
+
+// Der Plan als Datenblock im 26-Byte-Format - fuer die Meldung ans Telefon.
+// Rueckgabe: die Laenge (SC_MAX_ITEMS * SC_ITEM_BYTES).
+uint16_t plan_to_bytes(uint8_t *out);
 const PlanItem *plan_item(int index);
 
 // Heutiger Tag als Tage seit Epoche, aus der ORTSZEIT. Gerechnet wird überall

@@ -8,7 +8,9 @@
 // Der Postausgang traegt seit 0.10.0 auch die Namen: sechs mal sechzehn
 // Byte plus Trenner sind gut hundert, dazu drei Zahlen und die Koepfe.
 // 64 reichten fuer die Zahlen allein und fuer nichts sonst.
-#define OUTBOX_SIZE 256
+// Der Plan faehrt in jeder Meldung mit (156 Byte), dazu die Namen und der
+// Tagesstand - 256 reichten dafuer nicht mehr.
+#define OUTBOX_SIZE 512
 
 // Alle sechs Plaetze, durch Zeilenumbruch getrennt - auch die leeren.
 // DIE STELLE IST DIE AUSSAGE: die Bitmasken zaehlen Plaetze, nicht
@@ -58,6 +60,21 @@ static void prv_namen(char *aus, size_t platz) {
       aus[len] = '\0';
     }
   }
+}
+
+/**
+ * Die Einstellungen der Uhr - Plan und Animation - in eine Nachricht.
+ *
+ * DIE UHR IST DIE EINE STELLE, AN DER SIE GELTEN. Geaendert werden sie auf
+ * der Konfigseite der Pebble-App oder in Kiesel-Helper; beide schicken an die
+ * Uhr, und hier steht, was gilt. Die Telefonseite uebernimmt es in die
+ * Konfigseite, Kiesel-Helper in seine Einstellungen.
+ */
+static void prv_write_settings(DictionaryIterator *out) {
+  uint8_t bytes[SC_MAX_ITEMS * SC_ITEM_BYTES];
+  const uint16_t n = plan_to_bytes(bytes);
+  dict_write_data(out, MESSAGE_KEY_PLAN, bytes, n);
+  dict_write_int32(out, MESSAGE_KEY_FX, prefs_fx() ? 1 : 0);
 }
 
 static void prv_inbox(DictionaryIterator *iter, void *context) {
@@ -116,6 +133,7 @@ void phone_send_today(void) {
   char namen[NAMEN_BYTES];
   prv_namen(namen, sizeof(namen));
   dict_write_cstring(out, MESSAGE_KEY_NAMES, namen);
+  prv_write_settings(out);
   app_message_outbox_send();
 }
 

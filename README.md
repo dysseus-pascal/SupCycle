@@ -264,6 +264,22 @@ ansehen lassen; dort gibt es keine Konfigseite. Die Zyklen stehen dabei
 absichtlich in verschiedenen Phasen — eines in der Einnahme, eines in der Pause
 —, sonst sähe man nur den halben Fall.
 
+## Einstellen auf der Konfigseite oder in Kiesel-Helper
+
+Seit 0.12.0 lässt sich der Plan an zwei Stellen ändern: wie bisher auf der
+Konfigseite in der Pebble-App, und in
+[Kiesel-Helper](https://github.com/dysseus-pascal/Kiesel-Helper). **Die Uhr
+ist die eine Stelle, an der er gilt.** Beide schicken an die Uhr, und die Uhr
+meldet mit jeder Nachricht ihren Plan und die Animation (`PLAN`, `FX`). Die
+Telefonseite übernimmt das in die Konfigseite und die Timeline-Pins,
+Kiesel-Helper in seine Einstellungen.
+
+Bis 0.11 schickte die Telefonseite auf jede Anfrage der Uhr ihren eigenen
+gespeicherten Plan zurück — eine Änderung aus Kiesel-Helper wäre beim
+nächsten Start wieder überschrieben worden. Jetzt schickt sie ihn nur noch,
+wenn er auf der Konfigseite geändert wurde und nie ankam, oder wenn die Uhr
+gar keinen hat (neu installiert).
+
 ## Erinnerungen
 
 Zur eingetragenen Uhrzeit meldet sich die Uhr: ein Vollbild mit der Kapsel, der

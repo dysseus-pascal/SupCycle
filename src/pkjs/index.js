@@ -200,6 +200,100 @@ function storedFx() {
   try { return localStorage.getItem(FX_KEY) !== '0'; } catch (e) { return true; }
 }
 
+// ------------------------------------------------ Der Stand der Uhr
+
+// DIE UHR IST DIE EINE STELLE, AN DER DER PLAN GILT. Geaendert wird er hier
+// auf der Konfigseite ODER in Kiesel-Helper; beide schicken an die Uhr, und
+// die Uhr meldet mit jeder Nachricht ihren Plan. Diese Seite uebernimmt ihn -
+// in die Konfigseite und in die Pins. Bis 0.11 schickte sie auf jede Anfrage
+// der Uhr ihren eigenen gespeicherten Plan zurueck und haette einen aus
+// Kiesel-Helper damit ueberschrieben.
+//
+// NUR WAS NICHT ANKAM, GEHT NOCH EINMAL: ein Vermerk steht, solange eine
+// Aenderung von der Konfigseite nicht bestaetigt ist.
+var PENDING_KEY = 'supcycle_pending';
+
+function pending() {
+  try { return localStorage.getItem(PENDING_KEY) === '1'; } catch (e) { return false; }
+}
+function setPending(on) {
+  try { if (on) localStorage.setItem(PENDING_KEY, '1'); else localStorage.removeItem(PENDING_KEY); } catch (e) {}
+}
+
+function mergeClaySettings(values) {
+  try {
+    var s = JSON.parse(localStorage.getItem('clay-settings') || '{}') || {};
+    for (var k in values) { if (values.hasOwnProperty(k)) s[k] = values[k]; }
+    localStorage.setItem('clay-settings', JSON.stringify(s));
+  } catch (e) {}
+}
+
+// Den Namen aus 16 Byte UTF-8 zurueck in Text.
+function nameFromBytes(b) {
+  var raw = '';
+  for (var i = 0; i < b.length && b[i] !== 0; i++) raw += String.fromCharCode(b[i]);
+  try { return decodeURIComponent(escape(raw)); } catch (e) { return raw; }
+}
+
+// Den Datenblock der Uhr in Eintraege zerlegen - dasselbe Format, das
+// buildPlan baut. Ein leerer Platz ist null.
+function itemsFromBytes(bytes) {
+  var items = [];
+  for (var i = 0; i < SLOTS; i++) {
+    var o = i * ITEM_BYTES;
+    if (o + ITEM_BYTES > bytes.length || !bytes[o + 18]) { items.push(null); continue; }
+    var name = nameFromBytes(bytes.slice(o, o + NAME_BYTES));
+    if (!name) { items.push(null); continue; }
+    var anchor = (bytes[o + 22] | (bytes[o + 23] << 8) | (bytes[o + 24] << 16) | (bytes[o + 25] << 24));
+    items.push({
+      name: name, hour: bytes[o + 16], minute: bytes[o + 17],
+      every: bytes[o + 19] || 1, on: bytes[o + 20], off: bytes[o + 21], anchor: anchor
+    });
+  }
+  return items;
+}
+
+// Den Plan der Uhr uebernehmen: in den Speicher, in die Konfigseite.
+function adoptWatchPlan(bytes, fx) {
+  var items = itemsFromBytes(bytes);
+  var today = todayDay();
+  var clay = {};
+  var last = 0;
+  for (var i = 0; i < SLOTS; i++) {
+    var it = items[i];
+    var n = i + 1;
+    if (!it) {
+      clay['NAME' + n] = '';
+      continue;
+    }
+    last = n;
+    clay['NAME' + n] = it.name;
+    clay['TIME' + n] = String(it.hour * 60 + it.minute);
+    clay['EVERY' + n] = String(it.every);
+    clay['ON' + n] = it.on ? String(it.on) : '';
+    clay['OFF' + n] = it.off ? String(it.off) : '';
+    var since = Math.floor((today - it.anchor) / 7);
+    if (since < 0) since = 0;
+    if (since > 25) since = 25;
+    clay['SINCE' + n] = String(since);
+  }
+  clay.COUNT = String(Math.max(1, last));
+  if (fx !== undefined) clay.FX = !!fx;
+  try {
+    localStorage.setItem(PLAN_KEY, JSON.stringify(Array.prototype.slice.call(bytes)));
+    localStorage.setItem(ITEMS_KEY, JSON.stringify(items));
+    if (fx !== undefined) localStorage.setItem(FX_KEY, fx ? '1' : '0');
+  } catch (e) {}
+  mergeClaySettings(clay);
+}
+
+function watchPlanEmpty(bytes) {
+  for (var i = 0; i < SLOTS; i++) {
+    if (bytes[i * ITEM_BYTES + 18]) return false;
+  }
+  return true;
+}
+
 function sendPlan(bytes, why, fx) {
   // Die Einstellung reist mit dem Plan. Eine eigene Nachricht dafuer waere
   // eine zweite Gelegenheit, unterwegs verloren zu gehen - und der Postausgang
@@ -207,7 +301,7 @@ function sendPlan(bytes, why, fx) {
   var msg = { PLAN: bytes };
   if (fx !== undefined) msg.FX = fx ? 1 : 0;
   Pebble.sendAppMessage(msg,
-    function () { console.log('Plan geschickt (' + why + ')'); },
+    function () { setPending(false); console.log('Plan geschickt (' + why + ')'); },
     function () { console.log('Plan nicht zugestellt (' + why + ') - Uhr laeuft wohl nicht'); });
 }
 
@@ -403,6 +497,8 @@ Pebble.addEventListener('webviewclosed', function (e) {
   } catch (err) {}
   console.log('Plan gespeichert: ' + plan.used + ' Praeparate, Animation ' +
               (fx ? 'an' : 'aus'));
+  // Unterwegs, bis die Uhr bestaetigt: kein Stand der Uhr ueberschreibt ihn.
+  setPending(true);
   sendPlan(plan.bytes, 'nach dem Speichern', fx);
 });
 
@@ -413,10 +509,23 @@ Pebble.addEventListener('appmessage', function (e) {
   if (p.LANG !== undefined) {
     try { localStorage.setItem(LANG_KEY, String(p.LANG === 1 ? 1 : 0)); } catch (err) {}
   }
+  var watchPlan = (p.PLAN !== undefined && p.PLAN.length) ? p.PLAN : null;
   if (p.REQUEST !== undefined) {
     var stored = storedPlan();
-    if (stored) sendPlan(stored, 'auf Anfrage', storedFx());
-    else console.log('Kein Plan gespeichert - nichts zu schicken');
+    if (stored && pending()) {
+      // Auf der Konfigseite geaendert, nie angekommen: jetzt.
+      sendPlan(stored, 'nachgereicht', storedFx());
+    } else if (stored && watchPlan && watchPlanEmpty(watchPlan)) {
+      // Die Uhr hat keinen Plan (neu installiert), hier steht einer.
+      sendPlan(stored, 'Uhr ohne Plan', storedFx());
+    } else if (watchPlan) {
+      adoptWatchPlan(watchPlan, p.FX);
+    } else if (stored) {
+      // Eine Uhr ohne Planmeldung (aeltere Fassung): wie frueher.
+      sendPlan(stored, 'auf Anfrage', storedFx());
+    }
+  } else if (watchPlan && !pending()) {
+    adoptWatchPlan(watchPlan, p.FX);
   }
   // Die Uhr sagt, was heute ansteht und was davon schon genommen ist.
   if (p.TODAY !== undefined && p.DUE !== undefined) {

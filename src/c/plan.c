@@ -162,6 +162,27 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   return true;
 }
 
+uint16_t plan_to_bytes(uint8_t *out) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    uint8_t *p = out + i * SC_ITEM_BYTES;
+    const PlanItem *it = &s_items[i];
+    memset(p, 0, SC_ITEM_BYTES);
+    memcpy(p, it->name, SC_NAME_LEN);
+    p[16] = it->hour;
+    p[17] = it->minute;
+    p[18] = it->used ? 1 : 0;
+    p[19] = it->every;
+    p[20] = it->weeks_on;
+    p[21] = it->weeks_off;
+    const uint32_t a = (uint32_t)it->anchor_day;
+    p[22] = (uint8_t)(a & 0xFF);
+    p[23] = (uint8_t)((a >> 8) & 0xFF);
+    p[24] = (uint8_t)((a >> 16) & 0xFF);
+    p[25] = (uint8_t)((a >> 24) & 0xFF);
+  }
+  return SC_MAX_ITEMS * SC_ITEM_BYTES;
+}
+
 int plan_count(void) {
   int n = 0;
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
