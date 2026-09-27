@@ -19,9 +19,19 @@ int32_t plan_today(void) {
 
 // Die Abhak-Vermerke gelten immer nur für den laufenden Tag. Bei einem
 // Tageswechsel fallen sie weg - sonst stünde morgen alles schon als erledigt da.
+//
+// NUR VORWAERTS. Springt die Uhr zurück - etwa wenn das Telefon nach einer
+// Unterbrechung oder einem Neustart die Zeitzone neu setzt -, gehören die
+// Haken zum Tag, an dem man wirklich ist. Sie wegzuwerfen hiess: Abgehaktes
+// stand nach dem Verbinden wieder offen da.
 static void prv_roll_day(void) {
   const int32_t today = plan_today();
   if (s_taken_day == today) return;
+  if (today < s_taken_day) {
+    s_taken_day = today;
+    persist_write_int(PERSIST_DAY, (int)today);
+    return;
+  }
   s_taken_day = today;
   s_taken = 0;
   persist_write_int(PERSIST_DAY, (int)today);

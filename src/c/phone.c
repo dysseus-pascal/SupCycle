@@ -19,6 +19,8 @@
 
 static void (*s_observer)(void);
 static AppTimer *s_retry;
+// Der Tagesstand kam nicht an - bei der naechsten Verbindung nachholen.
+static bool s_unsent;
 
 // Eine Zahl aus einem Tupel, unabhaengig davon, wie breit sie ankam.
 // Ein int32 von einem Ein-Byte-Tupel zu lesen ergaebe Unsinn, und die
@@ -134,7 +136,22 @@ void phone_send_today(void) {
   prv_namen(namen, sizeof(namen));
   dict_write_cstring(out, MESSAGE_KEY_NAMES, namen);
   prv_write_settings(out);
-  app_message_outbox_send();
+  if (app_message_outbox_send() != APP_MSG_OK) s_unsent = true;
+}
+
+// OHNE VERBINDUNG ABGEHAKT: die Meldung scheitert still, und der Pin in der
+// Timeline stand weiter als offen da - als haette die App das Abhaken
+// vergessen. Sie geht deshalb noch einmal, sobald das Telefon wieder da ist.
+static void prv_outbox_failed(DictionaryIterator *iter, AppMessageResult reason, void *context) {
+  if (dict_find(iter, MESSAGE_KEY_TODAY)) s_unsent = true;
+}
+
+static void prv_outbox_sent(DictionaryIterator *iter, void *context) {
+  if (dict_find(iter, MESSAGE_KEY_TODAY)) s_unsent = false;
+}
+
+static void prv_connection(bool connected) {
+  if (connected && s_unsent) phone_send_today();
 }
 
 static void prv_ready(void *data) {
@@ -151,6 +168,11 @@ static void prv_ready(void *data) {
 
 void phone_init(void) {
   app_message_register_inbox_received(prv_inbox);
+  app_message_register_outbox_failed(prv_outbox_failed);
+  app_message_register_outbox_sent(prv_outbox_sent);
+  connection_service_subscribe((ConnectionHandlers) {
+    .pebble_app_connection_handler = prv_connection,
+  });
   app_message_open(INBOX_SIZE, OUTBOX_SIZE);
   // Nicht sofort: pkjs braucht einen Moment, bis es zuhoert.
   app_timer_register(1500, prv_ready, NULL);
