@@ -72,11 +72,20 @@ static void prv_fake_plan(void) {
 }
 #endif
 
+static bool prv_parse(const uint8_t *data, uint16_t len, PlanItem *fresh);
+
 void plan_init(void) {
+  // DER GESPEICHERTE PLAN IST KEIN NEUER. Frueher lief er durch
+  // plan_set_from_bytes - gegen ein noch leeres s_items war dort jeder Name
+  // "anders", alle Haken fielen weg und die 0 landete im Persist, bevor sie
+  // gelesen wurde: jeder App-Start machte den Tag wieder offen.
   if (persist_exists(PERSIST_PLAN)) {
     uint8_t buf[SC_MAX_ITEMS * SC_ITEM_BYTES];
     const int n = persist_read_data(PERSIST_PLAN, buf, sizeof(buf));
-    if (n > 0) plan_set_from_bytes(buf, (uint16_t)n);
+    PlanItem gespeichert[SC_MAX_ITEMS];
+    if (n > 0 && prv_parse(buf, (uint16_t)n, gespeichert)) {
+      memcpy(s_items, gespeichert, sizeof(s_items));
+    }
   }
 #ifdef SC_FAKE_PLAN
   prv_fake_plan();
@@ -133,10 +142,10 @@ static void prv_read_item_v1(const uint8_t *p, PlanItem *out) {
   prv_sanitize(out);
 }
 
-bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
+// Die Bytes der Leitung (oder des Persists) in Eintraege; false bei Unsinn.
+static bool prv_parse(const uint8_t *data, uint16_t len, PlanItem *fresh) {
   if (!data) return false;
-  PlanItem fresh[SC_MAX_ITEMS];
-  memset(fresh, 0, sizeof(fresh));
+  memset(fresh, 0, sizeof(PlanItem) * SC_MAX_ITEMS);
 
   // Welches Format? 156 (6x26) ist nicht durch 25 teilbar und 150 (6x25) nicht
   // durch 26 - die Länge sagt es also eindeutig.
@@ -151,7 +160,12 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
     if (stride == SC_ITEM_BYTES) prv_read_item(data + i * stride, &fresh[i]);
     else prv_read_item_v1(data + i * stride, &fresh[i]);
   }
+  return true;
+}
 
+bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
+  PlanItem fresh[SC_MAX_ITEMS];
+  if (!prv_parse(data, len, fresh)) return false;
   if (memcmp(fresh, s_items, sizeof(s_items)) == 0) return false;
 
   // Die Haken hängen am PLATZ, nicht am Präparat: s_taken ist eine Bitmaske
@@ -159,12 +173,13 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   // sein Haken nicht mehr - sonst stünde das neue Präparat ungefragt als
   // genommen da. Das ist schlimmer als ein fehlender Haken: es behauptet eine
   // Einnahme, die nie stattgefunden hat.
+  const uint8_t vorher = s_taken;
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (strncmp(fresh[i].name, s_items[i].name, SC_NAME_LEN) != 0) {
       s_taken &= (uint8_t)~(1u << i);
     }
   }
-  persist_write_int(PERSIST_TAKEN, s_taken);
+  if (s_taken != vorher) persist_write_int(PERSIST_TAKEN, s_taken);
 
   memcpy(s_items, fresh, sizeof(s_items));
   persist_write_data(PERSIST_PLAN, data, len < sizeof(s_items) ? len : (uint16_t)sizeof(s_items));
