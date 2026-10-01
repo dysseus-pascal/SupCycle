@@ -8,6 +8,9 @@ static PlanItem s_items[SC_MAX_ITEMS];
 static uint8_t s_taken;      //< ein Bit je Eintrag
 static int32_t s_taken_day;  //< für welchen Tag die Bits gelten
 
+// 01.01.2025 in Tagen seit der Epoche: eine Uhr davor hat ihre Zeit noch nicht.
+#define SC_TAG_2025 20089
+
 int32_t plan_today(void) {
   const time_t now = time(NULL);
   struct tm *lt = localtime(&now);
@@ -24,12 +27,24 @@ int32_t plan_today(void) {
 // Unterbrechung oder einem Neustart die Zeitzone neu setzt -, gehören die
 // Haken zum Tag, an dem man wirklich ist. Sie wegzuwerfen hiess: Abgehaktes
 // stand nach dem Verbinden wieder offen da.
+//
+// UND DEN TAG NICHT ZURUECKSCHREIBEN. Nach einem Firmware-Update oder
+// Neustart steht die Uhr kurz auf einer alten Zeit, bis das Telefon sie
+// stellt. Frueher wurde dieser alte Tag gemerkt - und die richtige Zeit danach
+// sah aus wie ein neuer Tag: alle Haken weg (01.10.2026, nach Firmware b18).
+// Der gemerkte Tag bleibt jetzt; erst ein Tag NACH ihm macht die Haken leer.
 static void prv_roll_day(void) {
   const int32_t today = plan_today();
   if (s_taken_day == today) return;
   if (today < s_taken_day) {
-    s_taken_day = today;
-    persist_write_int(PERSIST_DAY, (int)today);
+    // Liegt der gemerkte Tag weit voraus und geht die Uhr plausibel, war der
+    // gemerkte Tag der falsche (die Uhr stand einmal in der Zukunft): dann
+    // gilt heute, die Haken bleiben. Sonst - eine Uhr vor 2025 oder ein
+    // Sprung von Stunden - bleibt alles, wie es ist.
+    if (today >= SC_TAG_2025 && s_taken_day - today > 2) {
+      s_taken_day = today;
+      persist_write_int(PERSIST_DAY, (int)today);
+    }
     return;
   }
   s_taken_day = today;
