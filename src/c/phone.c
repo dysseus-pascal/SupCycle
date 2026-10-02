@@ -21,6 +21,9 @@ static void (*s_observer)(void);
 static AppTimer *s_retry;
 // Der Tagesstand kam nicht an - bei der naechsten Verbindung nachholen.
 static bool s_unsent;
+// Die Startanfrage steht noch aus - auch ein Nachfassen nach BUSY muss sie
+// tragen, sonst erfaehrt das Telefon die Sprache nie.
+static bool s_anfrage;
 
 // Eine Zahl aus einem Tupel, unabhaengig davon, wie breit sie ankam.
 // Ein int32 von einem Ein-Byte-Tupel zu lesen ergaebe Unsinn, und die
@@ -136,7 +139,17 @@ void phone_send_today(void) {
   prv_namen(namen, sizeof(namen));
   dict_write_cstring(out, MESSAGE_KEY_NAMES, namen);
   prv_write_settings(out);
-  if (app_message_outbox_send() != APP_MSG_OK) s_unsent = true;
+  if (s_anfrage) {
+    dict_write_int32(out, MESSAGE_KEY_REQUEST, 1);
+    // Sprache der Uhr mitschicken: die Konfigseite wird auf dem TELEFON gebaut
+    // und kann sie nicht von sich aus erfahren.
+    dict_write_int32(out, MESSAGE_KEY_LANG, (int32_t)strings_language());
+  }
+  if (app_message_outbox_send() != APP_MSG_OK) {
+    s_unsent = true;
+  } else {
+    s_anfrage = false;
+  }
 }
 
 // OHNE VERBINDUNG ABGEHAKT: die Meldung scheitert still, und der Pin in der
@@ -157,13 +170,14 @@ static void prv_connection(bool connected) {
 static void prv_ready(void *data) {
   // Einmal anfragen. Laeuft kein Telefon, bleibt es beim gespeicherten Plan -
   // die Uhr ist darauf nicht angewiesen.
-  DictionaryIterator *out;
-  if (app_message_outbox_begin(&out) != APP_MSG_OK) return;
-  dict_write_int32(out, MESSAGE_KEY_REQUEST, 1);
-  // Sprache der Uhr mitschicken: die Konfigseite wird auf dem TELEFON gebaut
-  // und kann sie nicht von sich aus erfahren.
-  dict_write_int32(out, MESSAGE_KEY_LANG, (int32_t)strings_language());
-  app_message_outbox_send();
+  // DIE ANFRAGE TRAEGT DEN PLAN DER UHR. Ohne ihn hielt die Telefonseite die
+  // Uhr fuer eine alte Fassung und schickte ihren eigenen gespeicherten Plan
+  // zurueck - ueber einen aus Kiesel-Helper oder Boulder hinweg. Und eine
+  // frisch installierte Uhr ohne Plan war so nicht zu erkennen. Der Tagesstand
+  // reist mit, damit die Pins beim Start auch dann nachziehen, wenn das
+  // Telefon den Plan nur uebernimmt und nichts zurueckschickt.
+  s_anfrage = true;
+  phone_send_today();
 }
 
 void phone_init(void) {
