@@ -87,7 +87,9 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   const int16_t head_y = PBL_IF_ROUND_ELSE(46, 26);
   pill_fx_draw_still(ctx, GPoint(margin + pill_w / 2, head_y), pill_w);
 
-  char hhmm[8];
+  // 12 statt 8 Byte: s_minute liegt zwar immer in 0..1439 ("HH:MM" + NUL),
+  // aber gcc kennt den Bereich nicht und warnte bei jedem Bau vor Abschneiden.
+  char hhmm[12];
   if (s_minute >= 0) {
     snprintf(hhmm, sizeof(hhmm), "%02d:%02d", s_minute / 60, s_minute % 60);
   } else {

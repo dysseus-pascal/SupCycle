@@ -248,6 +248,7 @@ sh tools/test_remind.sh <Quellordner>               # Weckpfad und Animation
 node tools/pkjs_pin_test.js                         # Timeline-Pins
 node tools/clay_count_test.js   # Anzahlsvorwahl der Konfigseite
 node tools/strings_check.js src/c/strings_table.h
+sh tools/plan_host_test.sh      # Hakenzeiten und Zurücknehmen (Rechner-C, pebble.h als Attrappe)
 ```
 
 `src/c/cycle.c` hängt bewusst an nichts — kein `pebble.h`, nur Ganzzahlen. Das
@@ -423,6 +424,25 @@ Geprüft mit `tools/pkjs_pin_test.js` (22 Prüfungen): Kennung, Zeitpunkt,
 Symbole, und dass ein unveränderter Pin **nicht** erneut hinausgeht, ein
 abgehakter aber schon. Gegenprobe gemacht — nimmt man den Tag aus der Kennung,
 fallen drei Prüfungen; nimmt man den Zustand aus der Signatur, zwei.
+
+## Hakenzeit und Zurücknehmen
+
+Mit dem Tagesstand geht je Platz die **Uhrzeit des Hakens** hinaus
+(`TAKEN_AT`: sechs mal 4 Byte, little endian, Sekunden seit 1970, 0 = offen).
+Ohne Verbindung Abgehaktes kommt erst Stunden später beim Telefon an; Boulder
+trägt die Einnahme damit zur richtigen Zeit ein. Die Zeit bleibt die des
+ersten Abhakens, auch wenn die Erinnerung die Runde danach noch einmal abhakt,
+und sie verschwindet um Mitternacht mit dem Haken.
+
+In der Gegenrichtung schickt Boulder `UNTAKE` (Bitmaske der Plätze) mit
+`TODAY` und den gemeinten `TAKEN_AT`, wenn dort eine Einnahme gelöscht wurde.
+Die Uhr nimmt einen Haken nur zurück, wenn der Tag stimmt und er noch dieselbe
+Zeit trägt — ein inzwischen neu gesetzter Haken ist eine neue Einnahme. Danach
+meldet sie ihren Stand, auch wenn nichts passte.
+
+Beide Schlüssel stehen am **Ende** der `messageKeys` (10045, 10046). Eine ältere
+Telefonseite liest die Zeiten nicht und schickt keinen Befehl; eine ältere
+Uhr-App überhört ihn.
 
 ## Noch nicht drin
 

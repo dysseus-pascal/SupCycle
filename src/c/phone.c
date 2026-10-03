@@ -3,13 +3,15 @@
 #include "prefs.h"
 #include "strings.h"
 
-// Sechs Eintraege zu je 25 Byte plus Kopf. 256 laesst Luft.
+// Sechs Eintraege zu je 25 Byte plus Kopf. 256 laesst Luft - auch fuer den
+// Befehl, Haken zurueckzunehmen (Tag, Maske, 24 Byte Zeiten).
 #define INBOX_SIZE  256
 // Der Postausgang traegt seit 0.10.0 auch die Namen: sechs mal sechzehn
 // Byte plus Trenner sind gut hundert, dazu drei Zahlen und die Koepfe.
 // 64 reichten fuer die Zahlen allein und fuer nichts sonst.
 // Der Plan faehrt in jeder Meldung mit (156 Byte), dazu die Namen und der
-// Tagesstand - 256 reichten dafuer nicht mehr.
+// Tagesstand - 256 reichten dafuer nicht mehr. Die Hakenzeiten (24 Byte)
+// passen noch hinein.
 #define OUTBOX_SIZE 512
 
 // Alle sechs Plaetze, durch Zeilenumbruch getrennt - auch die leeren.
@@ -82,14 +84,43 @@ static void prv_write_settings(DictionaryIterator *out) {
   dict_write_int32(out, MESSAGE_KEY_FX, prefs_fx() ? 1 : 0);
 }
 
+// Heute als Kalenderdatum JJJJMMTT - so, wie die Tagesmeldung es nennt.
+static int32_t prv_ymd(void) {
+  const time_t now = time(NULL);
+  struct tm *lt = localtime(&now);
+  return (lt->tm_year + 1900) * 10000 + (lt->tm_mon + 1) * 100 + lt->tm_mday;
+}
+
+// Boulder nimmt Haken zurueck, deren Einnahme dort geloescht wurde. NUR FUER
+// HEUTE: ein Befehl, der ueber Mitternacht liegen blieb, gilt einem Haken,
+// den es nicht mehr gibt. Rueckgabe: true, wenn es ein solcher Befehl war.
+static bool prv_untake(DictionaryIterator *iter) {
+  Tuple *untake = dict_find(iter, MESSAGE_KEY_UNTAKE);
+  if (!untake) return false;
+  Tuple *tag = dict_find(iter, MESSAGE_KEY_TODAY);
+  Tuple *at = dict_find(iter, MESSAGE_KEY_TAKEN_AT);
+  if (tag && prv_tuple_int(tag) == prv_ymd() && at && at->type == TUPLE_BYTE_ARRAY &&
+      plan_untake((uint32_t)prv_tuple_int(untake), at->value->data, at->length) && s_observer) {
+    s_observer();
+  }
+  return true;
+}
+
 static void prv_inbox(DictionaryIterator *iter, void *context) {
   // ZUERST die Einstellungen: sie kommen mit derselben Nachricht wie der
   // Plan, und ein Rueckspringen weiter unten wuerde sie verschlucken.
   Tuple *fx = dict_find(iter, MESSAGE_KEY_FX);
   if (fx) prefs_set_fx(prv_tuple_int(fx) != 0);
 
+  // Auf einen Befehl folgt IMMER die Tagesmeldung, auch wenn kein Haken
+  // passte: erst sie sagt dem Telefon, was jetzt gilt.
+  const bool befehl = prv_untake(iter);
+
   Tuple *plan = dict_find(iter, MESSAGE_KEY_PLAN);
-  if (!plan || plan->type != TUPLE_BYTE_ARRAY) return;
+  if (!plan || plan->type != TUPLE_BYTE_ARRAY) {
+    if (befehl) phone_send_today();
+    return;
+  }
   if (plan_set_from_bytes(plan->value->data, plan->length) && s_observer) {
     s_observer();
   }
@@ -126,12 +157,13 @@ void phone_send_today(void) {
   // zaehlt Tage seit der Epoche aus der Ortszeit; das Telefon kann daraus den
   // Kalendertag nicht sicher zurueckrechnen und landete bei positiver
   // Zeitzone einen Tag zu frueh - der Pin lag dann in der Vergangenheit.
-  const time_t now = time(NULL);
-  struct tm *lt = localtime(&now);
-  const int32_t ymd = (lt->tm_year + 1900) * 10000 + (lt->tm_mon + 1) * 100 + lt->tm_mday;
-  dict_write_int32(out, MESSAGE_KEY_TODAY, ymd);
+  dict_write_int32(out, MESSAGE_KEY_TODAY, prv_ymd());
   dict_write_int32(out, MESSAGE_KEY_DUE, (int32_t)due);
   dict_write_int32(out, MESSAGE_KEY_TAKEN, (int32_t)taken);
+  // Wann abgehakt wurde: offline Abgehaktes kaeme sonst mit der Zeit des
+  // Wiederverbindens in die Akte.
+  uint8_t zeiten[SC_TAKEN_AT_BYTES];
+  dict_write_data(out, MESSAGE_KEY_TAKEN_AT, zeiten, plan_taken_at_to_bytes(zeiten));
   // Die Namen dazu. Das Telefon kennt sie zwar aus der Konfigseite, aber
   // NICHT jede App auf dem Telefon: Kiesel-Helper hoert denselben Broadcast
   // mit und haette sonst nur Bitmasken ohne Beschriftung.

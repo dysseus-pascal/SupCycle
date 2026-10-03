@@ -73,6 +73,23 @@ CycleState plan_cycle(int index);
 bool plan_taken(int index);
 void plan_set_taken(int index, bool taken);
 
+// Wann abgehakt wurde, in Sekunden seit 1970; 0 heisst offen oder vor dieser
+// Fassung abgehakt. Das Telefon traegt die Einnahme zu dieser Zeit ein - die
+// Meldung selbst kommt ohne Verbindung womoeglich erst Stunden spaeter an.
+uint32_t plan_taken_at(int index);
+
+// Die Hakenzeiten als Datenblock fuer das Telefon: je Platz 4 Byte, little
+// endian, in der Reihenfolge der Plaetze. Rueckgabe: die Laenge.
+#define SC_TAKEN_AT_BYTES (SC_MAX_ITEMS * 4)
+uint16_t plan_taken_at_to_bytes(uint8_t *out);
+
+// Haken auf Geheiss des Telefons zuruecknehmen: jeden Platz in `mask`, der
+// noch mit der Hakenzeit aus `at` (Datenblock wie oben) abgehakt ist. Einen
+// inzwischen neu gesetzten Haken laesst das stehen - er ist eine neue
+// Einnahme, nicht die, die am Telefon geloescht wurde.
+// Rueckgabe: true, wenn sich etwas geaendert hat.
+bool plan_untake(uint32_t mask, const uint8_t *at, uint16_t len);
+
 // Wie viele der heute fälligen sind noch offen.
 int plan_open_today(void);
 

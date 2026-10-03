@@ -3,10 +3,19 @@
 #define PERSIST_PLAN   1
 #define PERSIST_DAY    2
 #define PERSIST_TAKEN  3
+#define PERSIST_TAKEN_AT 4
 
 static PlanItem s_items[SC_MAX_ITEMS];
 static uint8_t s_taken;      //< ein Bit je Eintrag
 static int32_t s_taken_day;  //< für welchen Tag die Bits gelten
+// Wann jeder Haken gesetzt wurde (Sekunden seit 1970), 0 ohne Haken. Im
+// Persist neben den Bits: die App geht nach dem Abhaken zu, und das Telefon
+// hoert womoeglich erst beim naechsten Start davon.
+static uint32_t s_taken_at[SC_MAX_ITEMS];
+
+static void prv_save_taken_at(void) {
+  persist_write_data(PERSIST_TAKEN_AT, s_taken_at, sizeof(s_taken_at));
+}
 
 // 01.01.2025 in Tagen seit der Epoche: eine Uhr davor hat ihre Zeit noch nicht.
 #define SC_TAG_2025 20089
@@ -49,8 +58,10 @@ static void prv_roll_day(void) {
   }
   s_taken_day = today;
   s_taken = 0;
+  memset(s_taken_at, 0, sizeof(s_taken_at));
   persist_write_int(PERSIST_DAY, (int)today);
   persist_write_int(PERSIST_TAKEN, 0);
+  prv_save_taken_at();
 }
 
 #ifdef SC_FAKE_PLAN
@@ -107,6 +118,9 @@ void plan_init(void) {
 #endif
   s_taken_day = persist_exists(PERSIST_DAY) ? (int32_t)persist_read_int(PERSIST_DAY) : 0;
   s_taken = persist_exists(PERSIST_TAKEN) ? (uint8_t)persist_read_int(PERSIST_TAKEN) : 0;
+  // Fehlt der Wert (Haken von vor dieser Fassung), bleiben die Zeiten 0.
+  memset(s_taken_at, 0, sizeof(s_taken_at));
+  if (persist_exists(PERSIST_TAKEN_AT)) persist_read_data(PERSIST_TAKEN_AT, s_taken_at, sizeof(s_taken_at));
   prv_roll_day();
 }
 
@@ -192,9 +206,13 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (strncmp(fresh[i].name, s_items[i].name, SC_NAME_LEN) != 0) {
       s_taken &= (uint8_t)~(1u << i);
+      s_taken_at[i] = 0;
     }
   }
-  if (s_taken != vorher) persist_write_int(PERSIST_TAKEN, s_taken);
+  if (s_taken != vorher) {
+    persist_write_int(PERSIST_TAKEN, s_taken);
+    prv_save_taken_at();
+  }
 
   memcpy(s_items, fresh, sizeof(s_items));
   persist_write_data(PERSIST_PLAN, data, len < sizeof(s_items) ? len : (uint16_t)sizeof(s_items));
@@ -267,9 +285,57 @@ bool plan_taken(int index) {
 void plan_set_taken(int index, bool taken) {
   if (index < 0 || index >= SC_MAX_ITEMS) return;
   prv_roll_day();
-  if (taken) s_taken |= (uint8_t)(1u << index);
-  else s_taken &= (uint8_t)~(1u << index);
+  const uint8_t bit = (uint8_t)(1u << index);
+  if (taken) {
+    // Ein Haken, der schon steht, behaelt seine Zeit: die Erinnerung hakt die
+    // ganze Runde ab, und die Einnahme davor war die echte.
+    if (!(s_taken & bit)) s_taken_at[index] = (uint32_t)time(NULL);
+    s_taken |= bit;
+  } else {
+    s_taken &= (uint8_t)~bit;
+    s_taken_at[index] = 0;
+  }
   persist_write_int(PERSIST_TAKEN, s_taken);
+  prv_save_taken_at();
+}
+
+uint32_t plan_taken_at(int index) {
+  if (!plan_taken(index)) return 0;
+  return s_taken_at[index];
+}
+
+uint16_t plan_taken_at_to_bytes(uint8_t *out) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    const uint32_t t = plan_taken_at(i);
+    out[i * 4 + 0] = (uint8_t)(t & 0xFF);
+    out[i * 4 + 1] = (uint8_t)((t >> 8) & 0xFF);
+    out[i * 4 + 2] = (uint8_t)((t >> 16) & 0xFF);
+    out[i * 4 + 3] = (uint8_t)((t >> 24) & 0xFF);
+  }
+  return SC_TAKEN_AT_BYTES;
+}
+
+bool plan_untake(uint32_t mask, const uint8_t *at, uint16_t len) {
+  prv_roll_day();
+  bool changed = false;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (!(mask & (1u << i)) || !(s_taken & (1u << i))) continue;
+    // Ohne Zeit fuer diesen Platz laesst sich nicht sagen, ob es noch
+    // derselbe Haken ist - dann bleibt er.
+    if (!at || len < (i + 1) * 4) continue;
+    const uint8_t *p = at + i * 4;
+    const uint32_t gemeint = (uint32_t)p[0] | ((uint32_t)p[1] << 8) |
+                             ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+    if (gemeint != s_taken_at[i]) continue;
+    s_taken &= (uint8_t)~(1u << i);
+    s_taken_at[i] = 0;
+    changed = true;
+  }
+  if (changed) {
+    persist_write_int(PERSIST_TAKEN, s_taken);
+    prv_save_taken_at();
+  }
+  return changed;
 }
 
 int plan_open_today(void) {

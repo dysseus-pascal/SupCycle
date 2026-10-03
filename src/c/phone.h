@@ -1,9 +1,12 @@
 #pragma once
 #include <pebble.h>
 
-// Die Telefonseite schickt den Plan. Mehr kommt von dort nicht, und die Uhr
-// schickt nichts zurueck - sie fragt beim Start einmal an, damit ein frisch
-// aufgespieltes Paket nicht ohne Plan dasteht.
+// Die Telefonseite schickt den Plan. Die Uhr fragt beim Start einmal an,
+// damit ein frisch aufgespieltes Paket nicht ohne Plan dasteht.
+//
+// Boulder schickt ausserdem den Befehl, Haken zurueckzunehmen (UNTAKE mit
+// TODAY und TAKEN_AT): wer die Einnahme dort loescht, soll sie auf der Uhr
+// nicht weiter als genommen sehen. Eine aeltere Fassung ueberhoert ihn.
 //
 // KEIN companionApp-Eintrag in package.json: der schaltete die Pebble-App auf
 // PebbleKit2 um, und damit die pkjs-Seite ab. Hier laeuft alles ueber pkjs.
