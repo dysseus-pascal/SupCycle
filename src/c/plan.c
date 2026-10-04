@@ -3,7 +3,15 @@
 #define PERSIST_PLAN   1
 #define PERSIST_DAY    2
 #define PERSIST_TAKEN  3
-#define PERSIST_TAKEN_AT 4
+// DIE HAKENZEITEN LIEGEN IN FACH 8. In 0.14.0 lagen sie in Fach 4 - das
+// gehoert aber prefs.c (Animation an/aus). Beide schrieben hinein: die
+// Animation las die erste Hakenzeit als Schalter (kein Haken auf Platz 1 =
+// Animation aus, schon gleich nach der Installation, und die Uhr meldete das
+// dem Telefon - im Emulator nachgestellt), und ein Umschalten der
+// Animation ersetzte die sechs Zeiten durch eine Zahl. 5 bis 7 belegt
+// remind.c. Was 0.14.0 in Fach 4 schrieb (24 Byte), holt plan_init herueber.
+#define PERSIST_TAKEN_AT 8
+#define PERSIST_TAKEN_AT_014 4
 
 static PlanItem s_items[SC_MAX_ITEMS];
 static uint8_t s_taken;      //< ein Bit je Eintrag
@@ -20,13 +28,23 @@ static void prv_save_taken_at(void) {
 // 01.01.2025 in Tagen seit der Epoche: eine Uhr davor hat ihre Zeit noch nicht.
 #define SC_TAG_2025 20089
 
-int32_t plan_today(void) {
-  const time_t now = time(NULL);
-  struct tm *lt = localtime(&now);
-  // Sekunden seit Mitternacht abziehen und dann in Tage teilen. Ohne mktime,
-  // wie in den Schwesterapps.
-  const time_t midnight = now - (lt->tm_hour * 3600 + lt->tm_min * 60 + lt->tm_sec);
+// So weit darf die Uhr vom Telefon abweichen, damit ihre Zeit als bestaetigt
+// gilt (siehe plan_uhr_bestaetigt). Stellt das Telefon die Uhr, liegen beide
+// Sekunden auseinander; eine Uhr, die nach einem Neustart auf einer alten
+// Zeit steht, Minuten bis Stunden.
+#define SC_UHR_ABWEICHUNG_MAX 300
+
+// Der Tag einer Zeit, als Tage seit Epoche aus der Ortszeit: Sekunden seit
+// Mitternacht abziehen und dann in Tage teilen. Ohne mktime, wie in den
+// Schwesterapps.
+static int32_t prv_tag(time_t t) {
+  struct tm *lt = localtime(&t);
+  const time_t midnight = t - (lt->tm_hour * 3600 + lt->tm_min * 60 + lt->tm_sec);
   return (int32_t)(midnight / 86400);
+}
+
+int32_t plan_today(void) {
+  return prv_tag(time(NULL));
 }
 
 // Die Abhak-Vermerke gelten immer nur für den laufenden Tag. Bei einem
@@ -41,7 +59,20 @@ int32_t plan_today(void) {
 // Neustart steht die Uhr kurz auf einer alten Zeit, bis das Telefon sie
 // stellt. Frueher wurde dieser alte Tag gemerkt - und die richtige Zeit danach
 // sah aus wie ein neuer Tag: alle Haken weg (01.10.2026, nach Firmware b18).
-// Der gemerkte Tag bleibt jetzt; erst ein Tag NACH ihm macht die Haken leer.
+// Der gemerkte Tag bleibt jetzt; erst ein Tag NACH ihm macht die Haken leer -
+// auch fuer einen Haken, den man setzt, WAEHREND die Uhr so zurueckliegt.
+//
+// DIE UHR ALLEIN KANN NICHT ENTSCHEIDEN, WELCHE ZEIT FALSCH WAR. Steht sie
+// hinter dem gemerkten Tag, liegt sie entweder jetzt zurueck (Neustart, s. o.)
+// oder sie ging vorher vor und ist jetzt richtig (Audit M10: dann hingen die
+// Haken des echten Tages am vorausgeeilten Tag und standen am echten Folgetag
+// noch da, als waere genommen worden). Fuer die Uhr sehen beide Faelle gleich
+// aus. Darum fragt sie in diesem Zustand das Telefon nach seiner Zeit
+// (plan_uhr_fraglich, phone.c) und gibt den gemerkten Tag erst auf, wenn das
+// Telefon ihre Zeit bestaetigt (plan_uhr_bestaetigt).
+// NICHT nach der Zeit jedes Hakens: ein Haken, den man setzt, waehrend die Uhr
+// nach einem Neustart auf gestern steht, traegt die Zeit von gestern - er fiele
+// beim Stellen der Uhr weg, obwohl er heute gesetzt wurde.
 static void prv_roll_day(void) {
   const int32_t today = plan_today();
   if (s_taken_day == today) return;
@@ -49,7 +80,7 @@ static void prv_roll_day(void) {
     // Liegt der gemerkte Tag weit voraus und geht die Uhr plausibel, war der
     // gemerkte Tag der falsche (die Uhr stand einmal in der Zukunft): dann
     // gilt heute, die Haken bleiben. Sonst - eine Uhr vor 2025 oder ein
-    // Sprung von Stunden - bleibt alles, wie es ist.
+    // Sprung von Stunden oder ein bis zwei Tagen - bleibt alles, wie es ist.
     if (today >= SC_TAG_2025 && s_taken_day - today > 2) {
       s_taken_day = today;
       persist_write_int(PERSIST_DAY, (int)today);
@@ -62,6 +93,30 @@ static void prv_roll_day(void) {
   persist_write_int(PERSIST_DAY, (int)today);
   persist_write_int(PERSIST_TAKEN, 0);
   prv_save_taken_at();
+}
+
+bool plan_uhr_fraglich(void) {
+  const int32_t today = plan_today();
+  return today < s_taken_day && today >= SC_TAG_2025;
+}
+
+bool plan_uhr_bestaetigt(uint32_t telefon) {
+  const int32_t abweichung = (int32_t)(time(NULL) - (time_t)telefon);
+  if (abweichung > SC_UHR_ABWEICHUNG_MAX || abweichung < -SC_UHR_ABWEICHUNG_MAX) {
+    // Die Uhr steht (noch) falsch - genau der Neustartfall. Nichts aendern.
+    APP_LOG(APP_LOG_LEVEL_INFO, "Telefonzeit weicht %d s ab - Tag bleibt", (int)abweichung);
+    return false;
+  }
+  const int32_t today = plan_today();
+  // Kurz vor Mitternacht koennen Uhr und Telefon auf verschiedenen Tagen
+  // stehen, obwohl sie nur Sekunden trennen. Dann lieber nichts.
+  if (prv_tag((time_t)telefon) != today) return false;
+  if (!(today < s_taken_day && today >= SC_TAG_2025)) return false;
+  APP_LOG(APP_LOG_LEVEL_INFO, "Uhr vom Telefon bestaetigt: Tag %d statt %d, Haken bleiben",
+          (int)today, (int)s_taken_day);
+  s_taken_day = today;
+  persist_write_int(PERSIST_DAY, (int)today);
+  return true;
 }
 
 #ifdef SC_FAKE_PLAN
@@ -118,9 +173,17 @@ void plan_init(void) {
 #endif
   s_taken_day = persist_exists(PERSIST_DAY) ? (int32_t)persist_read_int(PERSIST_DAY) : 0;
   s_taken = persist_exists(PERSIST_TAKEN) ? (uint8_t)persist_read_int(PERSIST_TAKEN) : 0;
-  // Fehlt der Wert (Haken von vor dieser Fassung), bleiben die Zeiten 0.
+  // Fehlt der Wert (Haken von vor 0.14.0), bleiben die Zeiten 0.
   memset(s_taken_at, 0, sizeof(s_taken_at));
-  if (persist_exists(PERSIST_TAKEN_AT)) persist_read_data(PERSIST_TAKEN_AT, s_taken_at, sizeof(s_taken_at));
+  if (persist_exists(PERSIST_TAKEN_AT)) {
+    persist_read_data(PERSIST_TAKEN_AT, s_taken_at, sizeof(s_taken_at));
+  } else if (persist_get_size(PERSIST_TAKEN_AT_014) == (int)sizeof(s_taken_at)) {
+    // Die Zeiten von 0.14.0 an ihren Platz; Fach 4 gehoert wieder prefs.c,
+    // das bei dieser Groesse schon die Voreinstellung genommen hat.
+    persist_read_data(PERSIST_TAKEN_AT_014, s_taken_at, sizeof(s_taken_at));
+    prv_save_taken_at();
+    persist_delete(PERSIST_TAKEN_AT_014);
+  }
   prv_roll_day();
 }
 

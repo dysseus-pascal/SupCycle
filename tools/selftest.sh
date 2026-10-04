@@ -3,14 +3,13 @@
 #
 #   sh tools/selftest.sh <Quellordner>
 #
-# Auf dem Baurechner steht kein C-Compiler (kein gcc, kein sudo fuer apt), nur
-# der ARM-Compiler der SDK. Ein Test, der nie laeuft, ist keiner - also laeuft
-# er dort, wo ohnehin uebersetzt wird: im Emulator. Das prueft nebenbei mehr
-# als ein Lauf auf x86-64, weil Typbreiten und Ausrichtung dann nachweislich
-# auf 32-Bit-ARM stimmen.
+# Er laeuft im Emulator, auf der 32-Bit-ARM-Zielarchitektur, wo die Rechnung
+# auch im Betrieb laeuft: Typbreiten und Ausrichtung stimmen dann
+# nachweislich dort. (Die Host-Tests plan_host_test.sh und phone_host_test.sh
+# laufen dagegen mit dem C-Compiler des Rechners.)
 #
-# Das Log liegt unter $HOME, NICHT unter /tmp: /tmp wird zwischen WSL-Sitzungen
-# geleert, und dann waere hinterher nichts mehr nachzulesen.
+# Das Log liegt unter $HOME, NICHT unter /tmp: /tmp kann zwischen Sitzungen
+# geleert werden, und dann waere hinterher nichts mehr nachzulesen.
 #
 # Exitcode 0 = alle Pruefungen bestanden.
 export PATH=$HOME/.local/bin:$PATH

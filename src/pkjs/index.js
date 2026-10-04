@@ -21,6 +21,14 @@ var ITEMS_KEY = 'supcycle_items';
 var FX_KEY = 'supcycle_fx';       // '1' oder '0'; fehlt = an
 var LANG_KEY = 'supcycle_lang';
 
+// KEIN CATCH OHNE LOG. Ein Fehler beim Telefonspeicher oder beim Lesen soll im
+// Log der Pebble-App stehen und nicht still verschwinden - sonst laesst sich
+// ein verlorener Plan hinterher nicht erklaeren. tools/catch_check.js prueft,
+// dass jeder catch ins Log meldet.
+function meldeFehler(wo, e) {
+  console.log('Fehler (' + wo + '): ' + e);
+}
+
 // Ein leerer Platz steht mit 0 im Byte 18. Frueher sagte dort ein Modus,
 // ob taeglich oder zyklisch - das ergibt sich jetzt aus den Wochen.
 var SLOT_UNUSED = 0, SLOT_USED = 1;
@@ -90,17 +98,30 @@ function todayDay() {
 // Name als UTF-8, auf NAME_BYTES aufgefüllt und notfalls abgeschnitten. Wird
 // mitten in einem Mehrbyte-Zeichen geschnitten, fallen dessen Reste weg — ein
 // halber Umlaut auf der Uhr wäre schlimmer als ein fehlender Buchstabe.
+// ZEICHEN AUSSERHALB DER GRUNDEBENE (Emoji) stehen in JavaScript als ZWEI
+// Ersatzzeichen. Bis 0.14.0 wurde jedes einzeln mit 3 Byte geschrieben - das
+// ist kein UTF-8, und Telefon wie Boulder lasen den Namen danach als Unsinn.
+// Jetzt wird das Paar zu einem 4-Byte-Zeichen; ein einzelnes wird U+FFFD.
 function nameBytes(text) {
   var out = [];
   var s = String(text || '');
   for (var i = 0; i < s.length && out.length < NAME_BYTES - 1; i++) {
     var c = s.charCodeAt(i);
+    var d = i + 1 < s.length ? s.charCodeAt(i + 1) : 0;
+    var paar = c >= 0xd800 && c <= 0xdbff && d >= 0xdc00 && d <= 0xdfff;
     var enc;
-    if (c < 0x80) enc = [c];
-    else if (c < 0x800) enc = [0xc0 | (c >> 6), 0x80 | (c & 0x3f)];
-    else enc = [0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)];
+    if (paar) {
+      var cp = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00);
+      enc = [0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 0x3f), 0x80 | ((cp >> 6) & 0x3f), 0x80 | (cp & 0x3f)];
+    } else {
+      if (c >= 0xd800 && c <= 0xdfff) c = 0xfffd;
+      if (c < 0x80) enc = [c];
+      else if (c < 0x800) enc = [0xc0 | (c >> 6), 0x80 | (c & 0x3f)];
+      else enc = [0xe0 | (c >> 12), 0x80 | ((c >> 6) & 0x3f), 0x80 | (c & 0x3f)];
+    }
     if (out.length + enc.length > NAME_BYTES - 1) break;
     out = out.concat(enc);
+    if (paar) i++;
   }
   while (out.length < NAME_BYTES) out.push(0);
   return out;
@@ -206,14 +227,15 @@ function readFx(dict) {
 }
 
 function storedFx() {
-  try { return localStorage.getItem(FX_KEY) !== '0'; } catch (e) { return true; }
+  try { return localStorage.getItem(FX_KEY) !== '0'; } catch (e) { meldeFehler('Animation lesen', e); return true; }
 }
 
 // ------------------------------------------------ Der Stand der Uhr
 
 // DIE UHR IST DIE EINE STELLE, AN DER DER PLAN GILT. Geaendert wird er hier
-// auf der Konfigseite ODER in Kiesel-Helper; beide schicken an die Uhr, und
-// die Uhr meldet mit jeder Nachricht ihren Plan. Diese Seite uebernimmt ihn -
+// auf der Konfigseite (bis zu seiner Archivierung am 29.09.2026 auch in
+// Kiesel-Helper); sie schickt an die Uhr, und die Uhr meldet mit jeder
+// Nachricht ihren Plan. Boulder liest ihn nur mit. Diese Seite uebernimmt ihn -
 // in die Konfigseite und in die Pins. Bis 0.11 schickte sie auf jede Anfrage
 // der Uhr ihren eigenen gespeicherten Plan zurueck und haette einen aus
 // Kiesel-Helper damit ueberschrieben.
@@ -223,10 +245,10 @@ function storedFx() {
 var PENDING_KEY = 'supcycle_pending';
 
 function pending() {
-  try { return localStorage.getItem(PENDING_KEY) === '1'; } catch (e) { return false; }
+  try { return localStorage.getItem(PENDING_KEY) === '1'; } catch (e) { meldeFehler('Vermerk lesen', e); return false; }
 }
 function setPending(on) {
-  try { if (on) localStorage.setItem(PENDING_KEY, '1'); else localStorage.removeItem(PENDING_KEY); } catch (e) {}
+  try { if (on) localStorage.setItem(PENDING_KEY, '1'); else localStorage.removeItem(PENDING_KEY); } catch (e) { meldeFehler('Vermerk schreiben', e); }
 }
 
 function mergeClaySettings(values) {
@@ -234,14 +256,14 @@ function mergeClaySettings(values) {
     var s = JSON.parse(localStorage.getItem('clay-settings') || '{}') || {};
     for (var k in values) { if (values.hasOwnProperty(k)) s[k] = values[k]; }
     localStorage.setItem('clay-settings', JSON.stringify(s));
-  } catch (e) {}
+  } catch (e) { meldeFehler('Konfigseite nachfuehren', e); }
 }
 
 // Den Namen aus 16 Byte UTF-8 zurueck in Text.
 function nameFromBytes(b) {
   var raw = '';
   for (var i = 0; i < b.length && b[i] !== 0; i++) raw += String.fromCharCode(b[i]);
-  try { return decodeURIComponent(escape(raw)); } catch (e) { return raw; }
+  try { return decodeURIComponent(escape(raw)); } catch (e) { meldeFehler('Name ist kein UTF-8', e); return raw; }
 }
 
 // Den Datenblock der Uhr in Eintraege zerlegen - dasselbe Format, das
@@ -292,7 +314,7 @@ function adoptWatchPlan(bytes, fx) {
     localStorage.setItem(PLAN_KEY, JSON.stringify(Array.prototype.slice.call(bytes)));
     localStorage.setItem(ITEMS_KEY, JSON.stringify(items));
     if (fx !== undefined) localStorage.setItem(FX_KEY, fx ? '1' : '0');
-  } catch (e) {}
+  } catch (e) { meldeFehler('Plan der Uhr speichern', e); }
   mergeClaySettings(clay);
 }
 
@@ -301,6 +323,20 @@ function watchPlanEmpty(bytes) {
     if (bytes[i * ITEM_BYTES + 18]) return false;
   }
   return true;
+}
+
+// Die Uhr hat KEINEN Plan, hier steht aber einer: die Uhr ist neu oder wurde
+// zurueckgesetzt. Ihr leerer Plan ist dann keine Aenderung, sondern eine
+// Luecke, und er darf den gespeicherten NIE ueberschreiben - ob mit oder ohne
+// Anfrage. Bis 0.14.0 tat er das, wenn die Startanfrage verloren ging (pkjs
+// hoerte noch nicht zu) und die Uhr ihren Stand ohne REQUEST nachholte: der
+// Plan auf dem Telefon war danach leer (im Emulator nachgestellt, 03.10.2026).
+// Leeren laesst sich der Plan nur auf der Konfigseite, und dann ist auch der
+// gespeicherte leer. (Boulder liest den Plan nur. Das archivierte
+// Kiesel-Helper konnte ihn auf der Uhr leeren - das holt diese Seite jetzt
+// zurueck; ein verlorener Plan ist schlimmer als ein zurueckgekehrter.)
+function watchWithoutPlan(watchPlan, stored) {
+  return !!(watchPlan && stored && watchPlanEmpty(watchPlan) && !watchPlanEmpty(stored));
 }
 
 function sendPlan(bytes, why, fx) {
@@ -323,6 +359,7 @@ function storedItems() {
     var arr = JSON.parse(raw);
     return (arr && arr.length) ? arr : null;
   } catch (e) {
+    meldeFehler('Eintraege lesen', e);
     return null;
   }
 }
@@ -334,6 +371,7 @@ function storedPlan() {
     var arr = JSON.parse(raw);
     return (arr && arr.length === SLOTS * ITEM_BYTES) ? arr : null;
   } catch (e) {
+    meldeFehler('Plan lesen', e);
     return null;
   }
 }
@@ -341,10 +379,10 @@ function storedPlan() {
 // ------------------------------------------------------------------ Timeline
 
 function loadPins() {
-  try { return JSON.parse(localStorage.getItem(PIN_STORE)) || {}; } catch (e) { return {}; }
+  try { return JSON.parse(localStorage.getItem(PIN_STORE)) || {}; } catch (e) { meldeFehler('Pins lesen', e); return {}; }
 }
 function savePins(o) {
-  try { localStorage.setItem(PIN_STORE, JSON.stringify(o)); } catch (e) {}
+  try { localStorage.setItem(PIN_STORE, JSON.stringify(o)); } catch (e) { meldeFehler('Pins speichern', e); }
 }
 
 function pad(n) { return (n < 10 ? '0' : '') + n; }
@@ -406,6 +444,7 @@ function insertViaLocal(pin, cb) {
       cb(true, 'lokal');
     }
   } catch (e) {
+    meldeFehler('Pin lokal', e);
     cb(false, 'lokal: ' + e);
   }
 }
@@ -503,7 +542,7 @@ Pebble.addEventListener('webviewclosed', function (e) {
     localStorage.setItem(PLAN_KEY, JSON.stringify(plan.bytes));
     localStorage.setItem(ITEMS_KEY, JSON.stringify(plan.items));
     localStorage.setItem(FX_KEY, fx ? '1' : '0');
-  } catch (err) {}
+  } catch (err) { meldeFehler('Plan speichern', err); }
   console.log('Plan gespeichert: ' + plan.used + ' Praeparate, Animation ' +
               (fx ? 'an' : 'aus'));
   // Unterwegs, bis die Uhr bestaetigt: kein Stand der Uhr ueberschreibt ihn.
@@ -516,15 +555,15 @@ Pebble.addEventListener('appmessage', function (e) {
   // Die Uhr sagt beim Start, in welcher Sprache sie beschriftet ist, und
   // fragt zugleich nach dem Plan.
   if (p.LANG !== undefined) {
-    try { localStorage.setItem(LANG_KEY, String(knownLang(parseInt(p.LANG, 10)))); } catch (err) {}
+    try { localStorage.setItem(LANG_KEY, String(knownLang(parseInt(p.LANG, 10)))); } catch (err) { meldeFehler('Sprache speichern', err); }
   }
   var watchPlan = (p.PLAN !== undefined && p.PLAN.length) ? p.PLAN : null;
+  var stored = storedPlan();
   if (p.REQUEST !== undefined) {
-    var stored = storedPlan();
     if (stored && pending()) {
       // Auf der Konfigseite geaendert, nie angekommen: jetzt.
       sendPlan(stored, 'nachgereicht', storedFx());
-    } else if (stored && watchPlan && watchPlanEmpty(watchPlan)) {
+    } else if (watchWithoutPlan(watchPlan, stored)) {
       // Die Uhr hat keinen Plan (neu installiert), hier steht einer.
       sendPlan(stored, 'Uhr ohne Plan', storedFx());
     } else if (watchPlan) {
@@ -534,11 +573,27 @@ Pebble.addEventListener('appmessage', function (e) {
       sendPlan(stored, 'auf Anfrage', storedFx());
     }
   } else if (watchPlan && !pending()) {
-    adoptWatchPlan(watchPlan, p.FX);
+    if (watchWithoutPlan(watchPlan, stored)) {
+      // Dieselbe Luecke, nur kam die Anfrage nie an: nicht uebernehmen,
+      // sondern der Uhr den Plan geben.
+      sendPlan(stored, 'Uhr ohne Plan, ohne Anfrage', storedFx());
+    } else {
+      adoptWatchPlan(watchPlan, p.FX);
+    }
   }
   // Die Uhr sagt, was heute ansteht und was davon schon genommen ist.
   if (p.TODAY !== undefined && p.DUE !== undefined) {
     pushPins(p.TODAY, p.DUE, p.TAKEN || 0);
+  }
+  // DIE UHR FRAGT NACH DER ZEIT, wenn sie hinter ihrem gemerkten Tag steht:
+  // ob sie jetzt falsch geht (Neustart) oder vorher falsch ging, weiss nur das
+  // Telefon (src/c/plan.c). Die Antwort traegt nur die Zeit; entscheiden tut
+  // die Uhr.
+  if (p.UHRZEIT !== undefined) {
+    var jetzt = Math.floor(Date.now() / 1000);
+    Pebble.sendAppMessage({ UHRZEIT: jetzt },
+      function () { console.log('Zeit an die Uhr: ' + jetzt + ' (Uhr: ' + p.UHRZEIT + ')'); },
+      function () { console.log('Zeit nicht zugestellt'); });
   }
 });
 

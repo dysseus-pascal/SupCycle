@@ -57,6 +57,17 @@ const PlanItem *plan_item(int index);
 // acht Wochen summiert sich das zu einem Fehler von einem Tag.
 int32_t plan_today(void);
 
+// Steht die Uhr hinter dem gemerkten Tag (und nach 2025)? Dann weiss sie
+// nicht, ob sie jetzt falsch geht oder vorher falsch ging - und fragt das
+// Telefon nach seiner Zeit (siehe prv_roll_day in plan.c).
+bool plan_uhr_fraglich(void);
+
+// Das Telefon nennt seine Zeit (Sekunden seit 1970). Weicht die Uhr hoechstens
+// 300 s davon ab und steht auf demselben Tag, geht sie richtig: dann war der
+// gemerkte Tag der falsche, und heute gilt - die Haken bleiben. Rueckgabe:
+// true, wenn der gemerkte Tag dadurch zurueckgesetzt wurde.
+bool plan_uhr_bestaetigt(uint32_t telefon);
+
 // Steht dieses Präparat heute an? Dauerhafte immer, zyklische je nach Phase.
 bool plan_due_today(int index);
 

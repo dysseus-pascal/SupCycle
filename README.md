@@ -238,6 +238,46 @@ Wochen summiert sich das zu einem Fehler von einem Tag — der Zyklus schaltete
 dann einen Tag zu früh oder zu spät um. Uhr und Telefon zählen beide ganze Tage
 seit der Epoche, aus der Ortszeit.
 
+### Ein Haken gilt einen Tag
+
+Ein Haken gilt für den Tag, den die Uhr sich gemerkt hat, und fällt mit dem
+nächsten Tag weg. Springt die Uhr **zurück** — nach einem Neustart steht sie
+kurz auf einer alten Zeit, oder das Telefon setzt die Zeitzone neu —, bleibt
+der gemerkte Tag stehen (seit 0.13.3). Die Haken des echten Tages bleiben, auch
+einer, den man setzt, während die Uhr noch auf gestern steht.
+
+**Stand die Uhr vor** und wurde zurückgestellt, sieht das für die Uhr genauso
+aus: Auch dann liegt sie hinter dem gemerkten Tag. Bis 0.14.0 hingen die Haken
+des echten Tages dann am vorausgeeilten Tag und standen am echten Folgetag
+noch da, als wäre genommen worden. Welche Zeit falsch war, weiss nur das
+Telefon. In diesem Zustand trägt darum jede Meldung die Uhrzeit der Uhr
+(`UHRZEIT`, Schlüssel 10047), und die Telefonseite antwortet mit ihrer.
+Weichen beide höchstens 300 s ab und stehen auf demselben Tag, geht die Uhr
+richtig: Heute gilt, die Haken bleiben, und am echten Folgetag sind sie weg.
+Sonst bleibt der gemerkte Tag.
+
+Was bleibt:
+
+- Antwortet das Telefon nicht (keine Verbindung, pkjs läuft nicht), bleibt es
+  beim Verhalten bis 0.14.0: Die Haken stehen am echten Folgetag noch da.
+- Gefragt wird nur, während die App läuft und ihren Stand meldet: beim Start,
+  bei jeder Erinnerung, nach einem Haken. Läuft sie am berichtigten Tag nicht
+  mehr — etwa weil die Uhr nach der letzten Erinnerung gestellt wird und man
+  die App an diesem Tag nicht mehr öffnet —, fragt sie nie. Am echten Folgetag
+  steht die Uhr dann wieder auf dem gemerkten Tag, und die Haken stehen noch
+  da wie bis 0.14.0.
+- Springt die Uhr plausibel (ab 2025) mehr als zwei Tage zurück, gilt der
+  gemerkte Tag ohne Rückfrage als falsch (seit 0.13.3). War es doch die Uhr,
+  die so weit zurückstand, ist das Stellen danach für sie ein neuer Tag, und
+  die Haken sind weg.
+- Springt die Uhr vor, ist das für sie ein neuer Tag: Die Haken des echten
+  Tages fallen weg (wie bisher).
+
+Geprüft in `tools/plan_host_test.c` (vorwärts, rückwärts, abgehakt auf
+gestern, Vorlauf mit und ohne Telefon, 300/301 s, Mitternacht),
+`tools/phone_host_test.c` (Frage und Antwort) und `tools/pkjs_start_test.js`
+(Antwort der Telefonseite).
+
 ## Bauen und prüfen
 
 ```sh
@@ -248,7 +288,10 @@ sh tools/test_remind.sh <Quellordner>               # Weckpfad und Animation
 node tools/pkjs_pin_test.js                         # Timeline-Pins
 node tools/clay_count_test.js   # Anzahlsvorwahl der Konfigseite
 node tools/strings_check.js src/c/strings_table.h
-sh tools/plan_host_test.sh      # Hakenzeiten und Zurücknehmen (Rechner-C, pebble.h als Attrappe)
+sh tools/plan_host_test.sh      # Hakenzeiten, Zurücknehmen, Tageswechsel, Persist-Fächer (Rechner-C, pebble.h als Attrappe)
+sh tools/phone_host_test.sh     # Startanfrage, Nachfassen, Nachholen, Frage nach der Zeit, Platz im Postausgang
+node tools/pkjs_start_test.js   # Startzweige der Telefonseite, Antwort auf die Frage nach der Zeit
+node tools/catch_check.js       # kein catch ohne Log in der Telefonseite
 ```
 
 `src/c/cycle.c` hängt bewusst an nichts — kein `pebble.h`, nur Ganzzahlen. Das
@@ -256,30 +299,48 @@ ist hier kein Selbstzweck: **eine Zyklusrechnung, die um einen Tag danebenliegt,
 fällt im Betrieb erst nach Wochen auf, und dann hat man schon falsch dosiert.**
 `cycle_selftest.c` stellt sie gegen 34 von Hand nachgerechnete Erwartungen.
 
-Der Test läuft **im Emulator, auf der 32-Bit-ARM-Zielarchitektur** — auf dem
-Baurechner steht kein C-Compiler, nur der ARM-Compiler der SDK. Ein Test, der
-nie läuft, ist keiner.
+Der Zyklustest läuft **im Emulator, auf der 32-Bit-ARM-Zielarchitektur**, wo
+die Rechnung auch im Betrieb läuft. Die Host-Tests (`plan_host_test.sh`,
+`phone_host_test.sh`) laufen mit dem C-Compiler des Rechners und einer
+Attrappe von `pebble.h` (`tools/host/`).
 
 `demo` setzt einen Beispielplan ein, damit sich beide Ansichten im Emulator
 ansehen lassen; dort gibt es keine Konfigseite. Die Zyklen stehen dabei
 absichtlich in verschiedenen Phasen — eines in der Einnahme, eines in der Pause
 —, sonst sähe man nur den halben Fall.
 
-## Einstellen auf der Konfigseite oder in Kiesel-Helper
+## Einstellen auf der Konfigseite
 
-Seit 0.12.0 lässt sich der Plan an zwei Stellen ändern: wie bisher auf der
-Konfigseite in der Pebble-App, und in
-[Kiesel-Helper](https://github.com/dysseus-pascal/Kiesel-Helper). **Die Uhr
-ist die eine Stelle, an der er gilt.** Beide schicken an die Uhr, und die Uhr
-meldet mit jeder Nachricht ihren Plan und die Animation (`PLAN`, `FX`). Die
-Telefonseite übernimmt das in die Konfigseite und die Timeline-Pins,
-Kiesel-Helper in seine Einstellungen.
+Den Plan stellt man auf der Konfigseite in der Pebble-App ein. **Die Uhr ist
+die eine Stelle, an der er gilt.** Die Konfigseite schickt an die Uhr, und die
+Uhr meldet mit jeder Nachricht ihren Plan und die Animation (`PLAN`, `FX`).
+Die Telefonseite übernimmt das in die Konfigseite und die Timeline-Pins.
+Boulder liest den Plan mit und ändert ihn nicht; es nimmt nur Haken zurück
+(siehe [Hakenzeit und Zurücknehmen](#hakenzeit-und-zurücknehmen)).
 
-Bis 0.11 schickte die Telefonseite auf jede Anfrage der Uhr ihren eigenen
-gespeicherten Plan zurück — eine Änderung aus Kiesel-Helper wäre beim
-nächsten Start wieder überschrieben worden. Jetzt schickt sie ihn nur noch,
+Von 0.12.0 an liess sich der Plan auch in
+[Kiesel-Helper](https://github.com/dysseus-pascal/Kiesel-Helper) ändern.
+Kiesel-Helper ist seit dem 29.09.2026 archiviert, seine Aufgaben hat Boulder
+übernommen. Bis 0.11 schickte die Telefonseite auf jede Anfrage der Uhr ihren
+eigenen gespeicherten Plan zurück — eine Änderung aus Kiesel-Helper wäre beim
+nächsten Start wieder überschrieben worden. Seither schickt sie ihn nur noch,
 wenn er auf der Konfigseite geändert wurde und nie ankam, oder wenn die Uhr
 gar keinen hat (neu installiert).
+
+**Ein leerer Plan der Uhr überschreibt nie einen gespeicherten.** Bis 0.14.0
+konnte genau das passieren: hörte die Telefonseite beim Start der App noch
+nicht zu und lehnte die Startanfrage ab (NACK), galt die Anfrage auf der Uhr
+trotzdem als erledigt. Beim Nachholen ging nur der Plan der Uhr hinaus —
+bei einer frisch installierten Uhr ein leerer — und die Telefonseite legte ihn
+über ihren gespeicherten. Im Emulator nachgestellt: frische Uhr, pkjs läuft
+erst nach 8 s an, und das Telefon lehnt wie die echte Pebble-App ab, solange
+pkjs nicht bereit ist (der Emulator selbst bestätigt alles). Seitdem:
+
+- Die Startanfrage ist erst erledigt, wenn das Telefon sie bestätigt. Bis
+  dahin trägt jede Meldung `REQUEST`, auch das Nachholen beim Wiederverbinden.
+- Lehnt das Telefon sie ab, fasst die Uhr bis zu viermal nach, alle 3 s.
+- Die Telefonseite legt einen leeren Plan der Uhr nie über einen
+  gespeicherten, ob mit oder ohne Anfrage, sondern schickt ihr den gespeicherten.
 
 ## Erinnerungen
 
@@ -405,9 +466,10 @@ Seit 0.10.0 gehen mit derselben Meldung auch die **Namen** hinaus — alle sechs
 Plätze, durch Zeilenumbruch getrennt, auch die leeren.
 
 Für die Timeline-Pins braucht es sie nicht; die Telefonseite hat den Plan ja
-selbst gebaut. Sie sind für [Kiesel-Helper](https://github.com/dysseus-pascal/Kiesel-Helper):
-die App hört denselben Broadcast mit und zeigt neben Wasser und Schlaf, was
-heute ansteht. Ohne Namen hätte sie nur Bitmasken und könnte zählen, aber
+selbst gebaut. Sie waren für [Kiesel-Helper](https://github.com/dysseus-pascal/Kiesel-Helper)
+gedacht und sind es heute für Boulder, das Kiesel-Helper seit dem 29.09.2026
+ersetzt: die App hört dieselbe Meldung mit und zeigt neben Wasser und Schlaf,
+was heute ansteht. Ohne Namen hätte sie nur Bitmasken und könnte zählen, aber
 nichts benennen.
 
 **Die leeren Plätze müssen mit.** Die Bitmasken zählen Plätze, nicht Einträge —
@@ -418,7 +480,8 @@ Der Schlüssel steht am **Ende** der `messageKeys`. Irgendwo dazwischen hätte
 alle folgenden Nummern verrutschen lassen, und die mithörende App trüge still
 Unsinn ein. Der Postausgang wuchs dafür von 64 auf 256 Byte: sechs mal sechzehn
 Byte Name plus Trenner sind gut hundert, und 64 reichten für die drei Zahlen
-allein.
+allein. (Seit der Plan in jeder Meldung mitfährt, sind es 512 Byte; der
+grösste Fall braucht 375, nachgezählt in `tools/phone_host_test.c`.)
 
 Geprüft mit `tools/pkjs_pin_test.js` (22 Prüfungen): Kennung, Zeitpunkt,
 Symbole, und dass ein unveränderter Pin **nicht** erneut hinausgeht, ein
@@ -444,11 +507,35 @@ Beide Schlüssel stehen am **Ende** der `messageKeys` (10045, 10046). Eine älte
 Telefonseite liest die Zeiten nicht und schickt keinen Befehl; eine ältere
 Uhr-App überhört ihn.
 
-## Noch nicht drin
+**Die Zeiten liegen im Persist-Fach 8.** 0.14.0 legte sie in Fach 4, das schon
+der Animation gehörte (`prefs.c`). Die Animation las danach die erste Hakenzeit
+als Schalter: ohne Haken auf Platz 1 ging sie beim nächsten Start still aus,
+und die Uhr meldete „aus“ an die Konfigseite — schon gleich nach der
+Installation, denn der erste Tag schreibt sechs Nullen in das Fach (im Emulator
+nachgestellt: Animation an gespeichert, App einmal neu gestartet, auf dem
+Telefon steht „aus“). Umgekehrt ersetzte ein
+Umschalten der Animation die sechs Zeiten durch eine Zahl. Jetzt holt die Uhr
+einen Zeitenblock aus Fach 4 einmal nach Fach 8 und räumt Fach 4; die
+Animation gilt dabei als an, bis man sie wieder umstellt. Belegt sind: 1 bis 3
+und 8 `plan.c`, 4 `prefs.c`, 5 bis 7 `remind.c`.
 
-**Health Connect.** Für diesen Stack lohnt es nicht: Kreatin, Maca und
-Ashwagandha haben dort keine Felder, und beim Multivitamin fehlen ausgerechnet
-B6 und B12.
+## Health Connect (über Boulder)
+
+SupCycle selbst schreibt nichts in eine Gesundheitsakte. Das tut Boulder, die
+Telefon-App, in der Kiesel-Helper aufgegangen ist (nicht öffentlich): es hört
+die Tagesmeldung mit und trägt jedes abgehakte Präparat als **Ernährungseintrag**
+ein — mit dem Namen, aber **ohne Nährstoffmengen**, denn die kennt SupCycle
+nicht. Kreatin, Maca oder Ashwagandha haben in Health Connect ohnehin keine
+eigenen Felder; der Eintrag sagt also „genommen“, nicht „wie viel wovon“.
+
+- Seit Boulder 0.46.0 mit SupCycle 0.14.0 steht der Eintrag zur **Uhrzeit des
+  Hakens** (`TAKEN_AT`), vorher zur Ankunft der Meldung.
+- Nimmt man den Haken auf der Uhr zurück, löscht Boulder den Eintrag (seit
+  0.33.1).
+- Löscht man die Einnahme in Boulder, nimmt die Uhr den Haken zurück (siehe
+  oben, seit Boulder 0.46.0). Boulder schickt den Befehl, sobald SupCycle auf
+  der Uhr läuft, und wiederholt ihn bei jedem Start; die Uhr nimmt ihn nur am
+  selben Tag an.
 
 ## Store-Symbole
 
