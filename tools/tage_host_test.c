@@ -22,6 +22,7 @@
 #include <pebble.h>
 #include <stdlib.h>
 #include "cycle.h"
+#include "cycle_selftest.h"
 #include "kalender.h"
 #include "plan.h"
 
@@ -247,6 +248,29 @@ static void abschnitt_gespeichert(void) {
   pruefe("nach dem Neustart dieselben sechs Namen", gleich);
 }
 
+static void abschnitt_kur(void) {
+  printf("\nEinnahmewochen ohne Pause: einmalige Kur (N6)\n");
+  const int32_t a = datum_tag(2026, 7, 1);
+  CycleState c = cycle_state(a, a + 500, 4, 0);
+  pruefe("4 Wochen ohne Pause, Tag 500: vorbei, nicht Woche 72 von 4",
+         c.phase == CyclePhaseDone && c.week <= c.of_weeks && !cycle_active_today(a, a + 500, 4, 0));
+  c = cycle_state(a, a + 10, 4, 0);
+  pruefe("Tag 10: Woche 2 von 4, noch 18 Tage", c.phase == CyclePhaseOn && c.week == 2 && c.of_weeks == 4 && c.days_left == 18);
+  pruefe("Tag 27 aktiv, Tag 28 nicht", cycle_active_today(a, a + 27, 4, 0) && !cycle_active_today(a, a + 28, 4, 0));
+  // Und im Plan: nach der Kur nicht mehr faellig.
+  attrappe_persist_leeren();
+  stub_jetzt = ortszeit(2026, 7, 1, 9, 0);
+  plan_init();
+  uint8_t b[SC_MAX_ITEMS * SC_ITEM_BYTES];
+  memset(b, 0, sizeof(b));
+  platz(b, "Ashwagandha", 1, 4, 0, a);
+  plan_set_from_bytes(b, sizeof(b));
+  pruefe("im Plan: Tag 27 faellig, Tag 28 nicht", plan_due_on(0, a + 27) && !plan_due_on(0, a + 28));
+  // Die Pruefungen, die sonst im Emulator laufen (tools/selftest.sh), hier
+  // auch - mit denselben Erwartungen.
+  pruefe("Selbsttest der Zyklusrechnung (cycle_selftest.c) ohne Fehler", cycle_selftest_run() == 0);
+}
+
 int main(void) {
   printf("Zeitzone: %s\n", getenv("TZ") ? getenv("TZ") : "(Rechner)");
   abschnitt_datum();
@@ -254,6 +278,7 @@ int main(void) {
   abschnitt_haken_london();
   abschnitt_umstellung();
   abschnitt_gespeichert();
+  abschnitt_kur();
   printf("%s\n", s_fehler ? "NICHT BESTANDEN" : "alles bestanden");
   return s_fehler ? 1 : 0;
 }

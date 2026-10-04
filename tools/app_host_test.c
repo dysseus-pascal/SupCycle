@@ -189,11 +189,53 @@ static void abschnitt_genommen_mit_fx(void) { abschnitt_genommen(true, ACK, "Gen
 static void abschnitt_genommen_frist(void) { abschnitt_genommen(false, KEINE_ANTWORT, "Genommen, Telefon antwortet nicht (M3)"); }
 static void abschnitt_genommen_offline(void) { abschnitt_genommen(true, OHNE_VERBINDUNG, "Genommen ohne Verbindung (M3)"); }
 
+// --- Eine Kur ohne Pause ist vorbei ---
+static void kur_ansehen(void) {
+  s_lief++;
+  attrappe_zeichnen();
+  pruefe("Heute: die beendete Kur steht nicht an - 4 von 4 offen, nicht 5",
+         strstr(attrappe_texte(), "4 von 4 offen|") != NULL && !plan_due_today(3) && plan_due_today(4));
+  attrappe_taste_lang(BUTTON_ID_SELECT);   // zur Zyklusseite
+  attrappe_zeichnen();
+  pruefe("Zyklus: sie steht da, als beendet",
+         strstr(attrappe_texte(), "Ashwagandha|Kur beendet|") != NULL);
+  pruefe("und nirgends eine Woche ueber ihrer Zahl", strstr(attrappe_texte(), "Woche 72") == NULL);
+  // Eine laufende Kur nennt ihre Woche und den Rest - eine Zeile weiter
+  // unten, so viele passen nicht auf einen Schirm.
+  attrappe_taste(BUTTON_ID_DOWN);
+  attrappe_zeichnen();
+  pruefe("die laufende: Woche 2 von 4, noch 18 Tage",
+         strstr(attrappe_texte(), "Rhodiola|Woche 2 von 4, noch 18 Tage|") != NULL);
+}
+static void abschnitt_kur(void) {
+  printf("\nEinnahmewochen ohne Pause (N6)\n");
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, false);
+  uint8_t b[SC_MAX_ITEMS * SC_ITEM_BYTES];
+  persist_read_data(FACH_PLAN, b, sizeof(b));
+  const struct { const char *name; int32_t anker; } kur[] = { { "Ashwagandha", heute - 500 }, { "Rhodiola", heute - 10 } };
+  for (int k = 0; k < 2; k++) {
+    uint8_t *p = b + (3 + k) * SC_ITEM_BYTES;
+    memset(p, 0, SC_ITEM_BYTES);
+    memcpy(p, kur[k].name, strlen(kur[k].name));
+    p[16] = 20; p[18] = 1; p[19] = 1; p[20] = 4; p[21] = 0;   // 4 Wochen, keine Pause
+    for (int i = 0; i < 4; i++) p[22 + i] = (uint8_t)((uint32_t)kur[k].anker >> (8 * i));
+  }
+  persist_write_data(FACH_PLAN, b, sizeof(b));
+  stub_jetzt = ortszeit(2026, 7, 14, 9, 0);
+  attrappe_start(APP_LAUNCH_USER, 0);
+  s_lief = 0;
+  attrappe_app_laeuft = kur_ansehen;
+  supcycle_main();
+  pruefe("die App lief", s_lief == 1);
+  pruefe("der Starter zaehlt die beendete Kur nicht mit", strstr(attrappe_glance(), "4 von 4") != NULL);
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
   abschnitt_neuplanen, abschnitt_offen, abschnitt_genommen_ohne_fx, abschnitt_genommen_mit_fx,
-  abschnitt_genommen_frist, abschnitt_genommen_offline,
+  abschnitt_genommen_frist, abschnitt_genommen_offline, abschnitt_kur,
 };
 
 int main(void) {

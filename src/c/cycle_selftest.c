@@ -91,13 +91,24 @@ int cycle_selftest_run(void) {
     EQ("mitten in der 6. Pause: Woche", s.week, 1);
   }
 
-  APP_LOG(APP_LOG_LEVEL_INFO, "== Ohne Pause (dauerhaft) ==");
+  APP_LOG(APP_LOG_LEVEL_INFO, "== Ohne Pause: einmalige Kur (4 Wochen) ==");
   {
-    CycleState s = cycle_state(A, A + 500, 4, 0);
-    EQ("immer Einnahme", s.phase, CyclePhaseOn);
+    // 28 Tage Einnahme, Tag 0..27; ab Tag 28 vorbei, fuer immer.
+    CycleState s = cycle_state(A, A, 4, 0);
+    EQ("Tag 0: Einnahme", s.phase, CyclePhaseOn);
+    EQ("Tag 0: Woche 1", s.week, 1);
+    EQ("Tag 0: noch 28 Tage", s.days_left, 28);
+    s = cycle_state(A, A + 27, 4, 0);
+    EQ("Tag 27: letzter Tag", s.phase, CyclePhaseOn);
+    EQ("Tag 27: Woche 4", s.week, 4);
+    EQ("Tag 27: noch 1 Tag", s.days_left, 1);
+    s = cycle_state(A, A + 28, 4, 0);
+    EQ("Tag 28: vorbei", s.phase, CyclePhaseDone);
+    s = cycle_state(A, A + 500, 4, 0);
+    EQ("Tag 500: vorbei", s.phase, CyclePhaseDone);
+    OK("Tag 500: keine Woche ueber der Zahl", s.week <= s.of_weeks);
+    OK("Tag 500: nicht mehr aktiv", !cycle_active_today(A, A + 500, 4, 0));
     EQ("kein Wechsel in Sicht", s.days_left, 0);
-    OK("Wochenzaehler laeuft mit", s.week == 500 / 7 + 1);
-    OK("dauerhaft heisst heute aktiv", cycle_active_today(A, A + 500, 4, 0));
   }
 
   APP_LOG(APP_LOG_LEVEL_INFO, "== Kurze Zyklen ==");
@@ -124,7 +135,7 @@ int cycle_selftest_run(void) {
     OK("weeks_on 0 stuerzt nicht ab", s.of_weeks == 2);
     s = cycle_state(A, A + 10, 8, -3);
     EQ("negative Pause gilt als keine", s.phase, CyclePhaseOn);
-    EQ("und damit kein Wechsel", s.days_left, 0);
+    EQ("und damit eine Kur von 8 Wochen", s.days_left, 56 - 10);
   }
 
   APP_LOG(APP_LOG_LEVEL_INFO, "== Raster: alle X Tage ==");

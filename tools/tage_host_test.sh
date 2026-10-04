@@ -9,8 +9,10 @@
 DIR=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
-cc -std=c99 -Wall -Wextra -I "$DIR/tools/host" -I "$DIR/src/c" \
+# SC_SELFTEST: cycle_selftest.c, sonst nur im Pruefbau fuer den Emulator.
+cc -std=c99 -Wall -Wextra -DSC_SELFTEST -I "$DIR/tools/host" -I "$DIR/src/c" \
    "$DIR/tools/tage_host_test.c" "$DIR/src/c/plan.c" "$DIR/src/c/kalender.c" "$DIR/src/c/cycle.c" \
+   "$DIR/src/c/cycle_selftest.c" \
    "$DIR/tools/host/attrappe.c" "$DIR/tools/host/attrappe_persist.c" \
    -o "$OUT/tage_test" || exit 1
 FEHLER=0

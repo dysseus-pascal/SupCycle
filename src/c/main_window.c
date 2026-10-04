@@ -137,6 +137,7 @@ static void prv_sub_text(int i, char *out, size_t n) {
   // hätte sie nichts zu sagen.
   if (c.of_weeks == 0) { prv_every_text(it->every, out, n); return; }
   if (c.phase == CyclePhaseOn) snprintf(out, n, S(STR_ON_FMT), c.week, c.of_weeks);
+  else if (c.phase == CyclePhaseDone) snprintf(out, n, "%s", S(STR_ENDED));
   else snprintf(out, n, "%s", S(STR_PAUSE));
 }
 
@@ -338,6 +339,8 @@ static void prv_draw_cycle(GContext *ctx, GRect b) {
       char phase[32];
       if (c.phase == CyclePhaseOn) {
         snprintf(phase, sizeof(phase), S(STR_ON_FMT), c.week, c.of_weeks);
+      } else if (c.phase == CyclePhaseDone) {
+        snprintf(phase, sizeof(phase), "%s", S(STR_ENDED));
       } else {
         snprintf(phase, sizeof(phase), "%s", S(STR_PAUSE));
       }

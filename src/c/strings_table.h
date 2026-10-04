@@ -33,6 +33,9 @@ STR(STR_ON_FMT,      32,  "week %d of %d",      "Woche %d von %d", "semaine %d/%
 // In der Pause zaehlt nicht, welche Pausenwoche laeuft, sondern wann sie
 // endet - und die Zeile brach mit beidem auf dem Schirm ab.
 STR(STR_PAUSE,        0,  "break",              "Pause", "pause", "pausa", "pausa")
+// Eine Kur ohne Pause ist nach ihren Wochen vorbei - sie steht noch im Plan,
+// steht aber nicht mehr an.
+STR(STR_ENDED,       32,  "course done",        "Kur beendet", "cure terminée", "ciclo concluso", "ciclo terminado")
 STR(STR_DAYS_LEFT,   32,  "%d days to go",      "noch %d Tage", "encore %d jours", "ancora %d giorni", "faltan %d días")
 STR(STR_DAY_LEFT,    32,  "1 day to go",        "noch 1 Tag", "encore 1 jour", "ancora 1 giorno", "falta 1 día")
 
