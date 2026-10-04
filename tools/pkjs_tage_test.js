@@ -170,5 +170,57 @@ console.log('\nUmstellung des Telefonspeichers (M1)');
         JSON.stringify(w.store));
 }
 
+console.log('\nDer Anker uebersteht die Konfigseite (W-H1)');
+{
+  // Die Uhr meldet: Maca 8 an/2 aus seit 10 Tagen, Zink alle 2 Tage ab
+  // gestern. Die Seite zeigt "seit 1 Woche" und "seit 0 Wochen".
+  const jetzt = ortszeit(2026, 7, 14, 9);
+  const heute = kalendertag(2026, 7, 14);
+  const uhr = plan(slot('Maca', 1, 8, 2, heute - 10), slot('Zink', 2, 0, 0, heute - 1));
+  const w = world({}, jetzt);
+  w.fire('appmessage', { payload: { PLAN: uhr, FX: 1, TODAY: 20260714, DUE: 1, TAKEN: 0 } });
+  w.fire('showConfiguration');
+  const c = w.clay();
+  check('die Seite zeigt seit 1 und 0 Wochen', c.SINCE1 === '1' && c.SINCE2 === '0', c.SINCE1 + '/' + c.SINCE2);
+  // Unveraendert gespeichert: genau das kommt aus der Seite zurueck.
+  w.fire('webviewclosed', { response: JSON.stringify(c) });
+  const b = w.sent[0] ? w.sent[0].msg.PLAN : [];
+  check('unveraendert gespeichert: Maca behaelt seinen Anker (nicht 3 Tage spaeter)', anker(b, 0) === heute - 10,
+        (anker(b, 0) - heute) + ' statt -10');
+  check('unveraendert gespeichert: das Raster alle 2 Tage bleibt (nicht heute faellig)', anker(b, 1) === heute - 1,
+        (anker(b, 1) - heute) + ' statt -1');
+  // Noch einmal oeffnen und speichern: weiter derselbe Anker.
+  w.fire('showConfiguration');
+  w.fire('webviewclosed', { response: JSON.stringify(w.clay()) });
+  const b2 = w.sent[1] ? w.sent[1].msg.PLAN : [];
+  check('zweimal gespeichert: immer noch derselbe', anker(b2, 0) === heute - 10 && anker(b2, 1) === heute - 1,
+        (anker(b2, 0) - heute) + '/' + (anker(b2, 1) - heute));
+  // Die Wochenzahl geaendert: dann gilt sie.
+  const neu = Object.assign({}, w.clay(), { SINCE1: '3' });
+  w.fire('webviewclosed', { response: JSON.stringify(neu) });
+  const b3 = w.sent[2] ? w.sent[2].msg.PLAN : [];
+  check('seit 3 Wochen eingestellt: Anker vor 21 Tagen', anker(b3, 0) === heute - 21, anker(b3, 0) - heute);
+  check('der andere Platz bleibt', anker(b3, 1) === heute - 1, anker(b3, 1) - heute);
+  // Ein neuer Name mit derselben Wochenzahl ist ein neues Praeparat.
+  w.fire('showConfiguration');
+  const umbenannt = Object.assign({}, w.clay(), { NAME2: 'Eisen' });
+  w.fire('webviewclosed', { response: JSON.stringify(umbenannt) });
+  const b4 = w.sent[3] ? w.sent[3].msg.PLAN : [];
+  check('neuer Name, seit 0 Wochen: beginnt heute', anker(b4, 1) === heute, anker(b4, 1) - heute);
+}
+{
+  // Die Seite wird Tage nach dem letzten Stand der Uhr geoeffnet: sie zeigt
+  // die Wochen von HEUTE, und unveraendert gespeichert bleibt der Anker.
+  const heute = kalendertag(2026, 7, 14);
+  const vorher = world({}, ortszeit(2026, 7, 14, 9));
+  vorher.fire('appmessage', { payload: { PLAN: plan(slot('Maca', 1, 8, 2, heute - 10)), FX: 1, TODAY: 20260714, DUE: 1, TAKEN: 0 } });
+  const w = world(vorher.store, ortszeit(2026, 7, 26, 9));   // zwoelf Tage spaeter
+  w.fire('showConfiguration');
+  check('zwoelf Tage spaeter zeigt die Seite seit 3 Wochen', w.clay().SINCE1 === '3', w.clay().SINCE1);
+  w.fire('webviewclosed', { response: JSON.stringify(w.clay()) });
+  const b = w.sent[0] ? w.sent[0].msg.PLAN : [];
+  check('und speichert den alten Anker', anker(b, 0) === heute - 10, anker(b, 0) - heute);
+}
+
 console.log('\nFehler: ' + fails);
 process.exit(fails ? 1 : 0);

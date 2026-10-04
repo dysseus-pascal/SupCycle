@@ -135,6 +135,56 @@ function nameBytes(text) {
   return out;
 }
 
+// ------------------------------------------------ Der Anker als Datum
+//
+// DER ANKER UEBERSTEHT DIE KONFIGSEITE. Die Seite kennt nur "Zyklus laeuft
+// seit N Wochen". Bis 0.15.0 wurde daraus bei jedem Speichern ein neuer Anker
+// (heute - N Wochen) - und der Zyklus rutschte um die Tage seit dem letzten
+// vollen Wochenschritt, bis zu sechs, das Raster "alle X Tage" mit ihm (Audit
+// W-H1). Jetzt merkt sich diese Seite zu jedem Platz, welchen Anker sie als
+// "seit N Wochen" in die Seite gestellt hat - als DATUM. Kommt beim Speichern
+// derselbe Name mit derselben Wochenzahl zurueck, bleibt dieser Anker.
+// Nur eine geaenderte Wochenzahl oder ein neuer Name rechnet neu.
+var ANKER_KEY = 'supcycle_anker';   // je Platz { name, datum: 'JJJJ-MM-TT', seit } oder null
+
+function datumAusTag(tag) { return new Date(tag * 86400000).toISOString().slice(0, 10); }
+function tagAusDatum(datum) {
+  var ms = Date.parse(datum);
+  return isFinite(ms) ? Math.round(ms / 86400000) : null;
+}
+
+// Wie viele volle Wochen seit dem Anker, so wie die Seite sie anbietet.
+function seitWochen(anker, today) {
+  var seit = Math.floor((today - anker) / 7);
+  if (seit < 0) seit = 0;
+  if (seit > 25) seit = 25;
+  return seit;
+}
+
+function gemerkteAnker() {
+  try {
+    var a = JSON.parse(localStorage.getItem(ANKER_KEY) || 'null');
+    return (a && a.length) ? a : [];
+  } catch (e) { meldeFehler('Anker lesen', e); return []; }
+}
+
+// Die Wochenzahlen, die in die Seite kommen, und dazu die Anker merken.
+// Rueckgabe: { SINCE1: '3', ... } fuer die Plaetze mit Eintrag.
+function ankerInDieSeite(items) {
+  var today = todayDay();
+  var merken = [];
+  var clay = {};
+  for (var i = 0; i < SLOTS; i++) {
+    var it = items && items[i];
+    if (!it || !it.name || typeof it.anchor !== 'number') { merken.push(null); continue; }
+    var seit = seitWochen(it.anchor, today);
+    merken.push({ name: it.name, datum: datumAusTag(it.anchor), seit: seit });
+    clay['SINCE' + (i + 1)] = String(seit);
+  }
+  try { localStorage.setItem(ANKER_KEY, JSON.stringify(merken)); } catch (e) { meldeFehler('Anker merken', e); }
+  return clay;
+}
+
 function int32le(v) {
   var n = v | 0;
   return [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];
@@ -155,6 +205,7 @@ function num(dict, key, fallback) {
  */
 function buildPlan(dict) {
   var today = todayDay();
+  var gemerkt = gemerkteAnker();
   var bytes = [];
   var items = [];
   var used = 0;
@@ -201,10 +252,13 @@ function buildPlan(dict) {
 
     // Anker: der Tag, an dem Woche 1 begann. "Zyklus läuft seit N Wochen"
     // schiebt ihn entsprechend zurück, damit die Uhr sofort die richtige
-    // Phase zeigt statt bei eins anzufangen.
+    // Phase zeigt statt bei eins anzufangen - aber nur, wenn die Wochenzahl
+    // oder der Name neu ist. Sonst gilt der Anker, den die Seite zeigte.
     var since = num(dict, 'SINCE' + i, 0);
     if (since < 0 || since > 25) since = 0;
-    var anchor = today - since * 7;
+    var alt = gemerkt[i - 1];
+    var altTag = alt && alt.name === name && alt.seit === since ? tagAusDatum(alt.datum) : null;
+    var anchor = altTag !== null ? altTag : today - since * 7;
 
     bytes = bytes.concat(
       nameBytes(name),
@@ -295,8 +349,7 @@ function itemsFromBytes(bytes) {
 // Den Plan der Uhr uebernehmen: in den Speicher, in die Konfigseite.
 function adoptWatchPlan(bytes, fx) {
   var items = itemsFromBytes(bytes);
-  var today = todayDay();
-  var clay = {};
+  var clay = ankerInDieSeite(items);
   var last = 0;
   for (var i = 0; i < SLOTS; i++) {
     var it = items[i];
@@ -311,10 +364,6 @@ function adoptWatchPlan(bytes, fx) {
     clay['EVERY' + n] = String(it.every);
     clay['ON' + n] = it.on ? String(it.on) : '';
     clay['OFF' + n] = it.off ? String(it.off) : '';
-    var since = Math.floor((today - it.anchor) / 7);
-    if (since < 0) since = 0;
-    if (since > 25) since = 25;
-    clay['SINCE' + n] = String(since);
   }
   clay.COUNT = String(Math.max(1, last));
   if (fx !== undefined) clay.FX = !!fx;
@@ -573,6 +622,11 @@ function pushPins(ymd, dueMask, takenMask) {
 
 Pebble.addEventListener('showConfiguration', function () {
   tageUmstellen();
+  // Die Wochenzahlen von heute: seit dem letzten Stand der Uhr koennen Tage
+  // vergangen sein, und eine veraltete Zahl saehe beim Speichern aus wie eine
+  // geaenderte.
+  var items = storedItems();
+  if (items) mergeClaySettings(ankerInDieSeite(items));
   Pebble.openURL(getClay().generateUrl());
 });
 
