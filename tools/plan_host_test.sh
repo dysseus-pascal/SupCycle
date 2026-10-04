@@ -9,7 +9,7 @@ DIR=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
 cc -std=c99 -Wall -Wextra -I "$DIR/tools/host" -I "$DIR/src/c" \
-   "$DIR/tools/plan_host_test.c" "$DIR/src/c/plan.c" "$DIR/src/c/cycle.c" "$DIR/src/c/prefs.c" \
+   "$DIR/tools/plan_host_test.c" "$DIR/src/c/plan.c" "$DIR/src/c/kalender.c" "$DIR/src/c/cycle.c" "$DIR/src/c/prefs.c" \
    "$DIR/tools/host/attrappe.c" "$DIR/tools/host/attrappe_persist.c" \
    -o "$OUT/plan_test" || exit 1
 TZ=UTC "$OUT/plan_test"

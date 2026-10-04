@@ -28,6 +28,14 @@
 #define SC_ITEM_BYTES     26
 #define SC_ITEM_BYTES_V1  25
 
+// Wie der Plan auf der Leitung zu lesen ist - die Uhr schickt es mit jedem
+// Plan als PLANFASSUNG, fuer Boulder, das ihn mitliest und selbst rechnet.
+// Ohne den Schluessel stammt er von 0.15.0 oder frueher: Anker als
+// Ortsmitternacht durch 86400, und Einnahmewochen ohne Pause liefen endlos.
+// Fassung 2: Anker als Kalendertag (kalender.h), und Einnahmewochen ohne
+// Pause sind eine einmalige Kur, die danach endet.
+#define SC_PLANFASSUNG 2
+
 typedef struct {
   char name[SC_NAME_LEN];
   uint8_t hour;
@@ -36,7 +44,7 @@ typedef struct {
   uint8_t every;        //< alle X Tage, mindestens 1
   uint8_t weeks_on;     //< 0 = unbegrenzt, also nie Pause
   uint8_t weeks_off;
-  int32_t anchor_day;   //< Tage seit Epoche, ab denen gezählt wird
+  int32_t anchor_day;   //< Kalendertag (kalender.h), ab dem gezählt wird
 } PlanItem;
 
 void plan_init(void);
@@ -52,9 +60,9 @@ int plan_count(void);                    //< benutzte Einträge, 0..SC_MAX_ITEMS
 uint16_t plan_to_bytes(uint8_t *out);
 const PlanItem *plan_item(int index);
 
-// Heutiger Tag als Tage seit Epoche, aus der ORTSZEIT. Gerechnet wird überall
-// in ganzen Tagen: Sommerzeit verschiebt einen Tag um eine Stunde, und über
-// acht Wochen summiert sich das zu einem Fehler von einem Tag.
+// Heutiger Tag als Kalendertag (kalender.h), aus der ORTSZEIT. Gerechnet wird
+// überall in ganzen Tagen: Sommerzeit verschiebt einen Tag um eine Stunde,
+// und über acht Wochen summiert sich das zu einem Fehler von einem Tag.
 int32_t plan_today(void);
 
 // Steht die Uhr hinter dem gemerkten Tag (und nach 2025)? Dann weiss sie
@@ -71,7 +79,7 @@ bool plan_uhr_bestaetigt(uint32_t telefon);
 // Steht dieses Präparat heute an? Dauerhafte immer, zyklische je nach Phase.
 bool plan_due_today(int index);
 
-// Dasselbe für einen beliebigen Tag (Tage seit Epoche). Die Weckplanung
+// Dasselbe für einen beliebigen Kalendertag. Die Weckplanung
 // braucht das: sie stellt auch Wecker für morgen, und morgen kann ein Zyklus
 // schon in der Pause sein.
 bool plan_due_on(int index, int32_t day);

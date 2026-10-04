@@ -5,8 +5,13 @@
 # Startmeldung, ohne Saetze und ohne Bahnen. Sie von Hand nachzuziehen,
 # wird vergessen; hier entsteht sie bei jeder Aenderung an den Quellen neu.
 #
-# Der Lauf belegt, dass die App uebersetzt. Dass sie auf der Uhr das
-# Richtige TUT, belegt er nicht.
+# Vor dem Bauen laufen alle Pruefungen, die ohne Uhr und Emulator gehen
+# (tools/alle_tests.sh: C-Tests auf dem Rechner, Node-Tests in drei
+# Zeitzonen). EIN ROTER TEST STOPPT DEN LAUF - dann wird nichts gebaut,
+# eingecheckt oder veroeffentlicht.
+#
+# Der Lauf belegt, dass die App uebersetzt und die Rechnung stimmt. Dass sie
+# auf der Uhr das Richtige TUT, belegt er nicht.
 name: Bauen
 
 on:
@@ -17,6 +22,7 @@ on:
       - 'resources/**'
       - 'package.json'
       - 'wscript'
+      - 'tools/**'
       - '.github/workflows/bauen.yml'
   workflow_dispatch:
 
@@ -45,6 +51,10 @@ jobs:
 
       - name: Clay holen
         run: npm install --no-audit --no-fund
+
+      # Vor dem Uebersetzen: ein roter Test bricht hier ab.
+      - name: Pruefen
+        run: sh tools/alle_tests.sh
 
       - name: Uebersetzen
         run: pebble build < /dev/null

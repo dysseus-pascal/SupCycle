@@ -6,14 +6,22 @@ CycleState cycle_state(int32_t anchor_day, int32_t today, int weeks_on, int week
   if (weeks_on < 1) weeks_on = 1;
   if (weeks_off < 0) weeks_off = 0;
 
-  // Ohne Pause gibt es nichts zu rechnen: immer Einnahme. Der Wochenzähler
-  // läuft trotzdem mit, damit die Anzeige etwas zu zeigen hat.
+  // OHNE PAUSE IST ES EINE KUR, DIE ENDET: "4 Wochen Einnahme" heisst vier
+  // Wochen und dann nicht mehr. Bis 0.15.0 lief der Zaehler einfach weiter
+  // ("Woche 72 von 4", Audit N6), und erinnert wurde fuer immer.
   if (weeks_off == 0) {
     const int32_t elapsed = (today > anchor_day) ? (today - anchor_day) : 0;
-    s.phase = CyclePhaseOn;
+    const int32_t on_days = (int32_t)weeks_on * 7;
     s.of_weeks = weeks_on;
-    s.week = (int)(elapsed / 7) + 1;
-    s.days_left = 0;    // kein Wechsel in Sicht
+    if (elapsed < on_days) {
+      s.phase = CyclePhaseOn;
+      s.week = (int)(elapsed / 7) + 1;
+      s.days_left = (int)(on_days - elapsed);
+    } else {
+      s.phase = CyclePhaseDone;
+      s.week = weeks_on;
+      s.days_left = 0;    // es kommt kein Wechsel mehr
+    }
     return s;
   }
 

@@ -248,15 +248,16 @@ static void abschnitt_uhrzeit_groesster_fall(void) {
   voller_plan();
   attrappe_zeitgeber_ablaufen();
   pruefe("voller Plan, Anfrage und Frage: nichts fehlt", !im_log("unvollstaendig"));
-  pruefe("alle zehn Felder sind da", hat(MESSAGE_KEY_TODAY) && hat(MESSAGE_KEY_DUE) && hat(MESSAGE_KEY_TAKEN) &&
+  pruefe("alle elf Felder sind da", hat(MESSAGE_KEY_TODAY) && hat(MESSAGE_KEY_DUE) && hat(MESSAGE_KEY_TAKEN) &&
          hat(MESSAGE_KEY_TAKEN_AT) && hat(MESSAGE_KEY_NAMES) && hat(MESSAGE_KEY_PLAN) && hat(MESSAGE_KEY_FX) &&
-         hat(MESSAGE_KEY_REQUEST) && hat(MESSAGE_KEY_LANG) && hat(MESSAGE_KEY_UHRZEIT));
+         hat(MESSAGE_KEY_REQUEST) && hat(MESSAGE_KEY_LANG) && hat(MESSAGE_KEY_UHRZEIT) &&
+         hat(MESSAGE_KEY_PLANFASSUNG));
   printf("         (Nachricht %u von %u Byte)\n", (unsigned)attrappe_letzte()->belegt,
          (unsigned)attrappe_ausgang_groesse());
-  // Von Hand gezaehlt: 1 + TODAY, DUE, TAKEN, FX, REQUEST, LANG, UHRZEIT je
-  // 7 + 4 (77) + TAKEN_AT 7 + 24 (31) + NAMES 7 + 6 x 15 + 5 + 1 (103)
-  // + PLAN 7 + 156 (163) = 375.
-  pruefe("groesster Fall: 375 Byte", attrappe_letzte()->belegt == 375);
+  // Von Hand gezaehlt: 1 + TODAY, DUE, TAKEN, FX, REQUEST, LANG, UHRZEIT,
+  // PLANFASSUNG je 7 + 4 (88) + TAKEN_AT 7 + 24 (31) + NAMES 7 + 6 x 15 + 5
+  // + 1 (103) + PLAN 7 + 156 (163) = 386.
+  pruefe("groesster Fall: 386 Byte", attrappe_letzte()->belegt == 386);
 }
 
 static void abschnitt_5(void) {
@@ -279,11 +280,76 @@ static void abschnitt_5(void) {
          zahl(MESSAGE_KEY_FX) == 0);
 }
 
+// Wer auf das Ende der Tagesmeldung wartet (phone_when_sent, Audit M3): die
+// Erinnerung schliesst die App erst, wenn das Telefon den Haken hat.
+static int s_fertig;
+static void fertig(void) { s_fertig++; }
+
+static void abschnitt_warten(void) {
+  printf("\nWarten auf das Telefon (M3)\n");
+  start();
+  attrappe_zeitgeber_ablaufen();
+  attrappe_ack();                   // die Startanfrage ist durch
+  s_fertig = 0;
+  phone_when_sent(fertig, 5000);
+  pruefe("nichts unterwegs: sofort", s_fertig == 1);
+
+  s_fertig = 0;
+  phone_send_today();               // abgehakt
+  phone_when_sent(fertig, 5000);
+  pruefe("unterwegs: noch nicht", s_fertig == 0);
+  attrappe_zeitgeber_vorspulen(4000);
+  pruefe("nach 4 s ohne Antwort: noch nicht", s_fertig == 0);
+  attrappe_ack();
+  pruefe("Bestaetigung: jetzt, einmal", s_fertig == 1);
+  attrappe_zeitgeber_vorspulen(5000);
+  pruefe("und die Frist ruft nicht noch einmal", s_fertig == 1);
+
+  s_fertig = 0;
+  phone_send_today();
+  phone_when_sent(fertig, 5000);
+  attrappe_nack(APP_MSG_NOT_CONNECTED);
+  pruefe("Ablehnung: jetzt, einmal", s_fertig == 1);
+
+  s_fertig = 0;
+  attrappe_senden_scheitert(APP_MSG_NOT_CONNECTED);
+  phone_send_today();
+  phone_when_sent(fertig, 5000);
+  pruefe("nicht abschickbar: sofort", s_fertig == 1);
+
+  s_fertig = 0;
+  phone_send_today();
+  phone_when_sent(fertig, 5000);
+  attrappe_zeitgeber_vorspulen(4999);
+  pruefe("keine Antwort: bis kurz vor der Frist nicht", s_fertig == 0);
+  attrappe_zeitgeber_vorspulen(1);
+  pruefe("keine Antwort: nach 5 s doch", s_fertig == 1);
+  pruefe("und das steht im Log", im_log("ohne Antwort"));
+  attrappe_ack();
+  pruefe("eine spaete Bestaetigung ruft nicht noch einmal", s_fertig == 1);
+}
+
+static void abschnitt_warten_besetzt(void) {
+  printf("\nWarten auf das Telefon, Postausgang besetzt\n");
+  start();
+  attrappe_zeitgeber_ablaufen();    // Startanfrage unterwegs
+  s_fertig = 0;
+  phone_send_today();               // abgehakt, waehrend die Anfrage laeuft: BUSY
+  phone_when_sent(fertig, 5000);
+  attrappe_ack();                   // die Anfrage ist durch, der Haken noch nicht
+  pruefe("Anfrage bestaetigt, Haken wartet auf den Nachschub: noch nicht", s_fertig == 0);
+  attrappe_zeitgeber_vorspulen(700);
+  pruefe("Nachschub abgeschickt: noch nicht", s_fertig == 0 && attrappe_unterwegs());
+  attrappe_ack();
+  pruefe("Nachschub bestaetigt: jetzt", s_fertig == 1);
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: so hat er frische
 // statische Variablen wie die App bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
   abschnitt_0, abschnitt_1, abschnitt_2, abschnitt_3, abschnitt_4, abschnitt_5, abschnitt_6,
   abschnitt_nicht_abgeschickt, abschnitt_uhrzeit, abschnitt_uhrzeit_groesster_fall,
+  abschnitt_warten, abschnitt_warten_besetzt,
 };
 
 int main(void) {

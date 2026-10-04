@@ -1,4 +1,5 @@
 #include "plan.h"
+#include "kalender.h"
 
 #define PERSIST_PLAN   1
 #define PERSIST_DAY    2
@@ -12,6 +13,13 @@
 // remind.c. Was 0.14.0 in Fach 4 schrieb (24 Byte), holt plan_init herueber.
 #define PERSIST_TAKEN_AT 8
 #define PERSIST_TAKEN_AT_014 4
+// WIE DIE GESPEICHERTEN TAGE GEZAEHLT SIND. Fehlt das Fach, stammen der
+// gemerkte Tag und die Anker von 0.15.0 oder frueher (Ortsmitternacht durch
+// 86400); TAGE_KALENDER heisst Kalendertage (kalender.h). plan_init stellt
+// einmal um - ohne das verschoeben sich in Zuerich alle Zyklen um einen Tag,
+// und am Tag der Aktualisierung fielen die Haken weg.
+#define PERSIST_TAGE 9
+#define TAGE_KALENDER 2
 
 static PlanItem s_items[SC_MAX_ITEMS];
 static uint8_t s_taken;      //< ein Bit je Eintrag
@@ -34,10 +42,14 @@ static void prv_save_taken_at(void) {
 // Zeit steht, Minuten bis Stunden.
 #define SC_UHR_ABWEICHUNG_MAX 300
 
-// Der Tag einer Zeit, als Tage seit Epoche aus der Ortszeit: Sekunden seit
-// Mitternacht abziehen und dann in Tage teilen. Ohne mktime, wie in den
-// Schwesterapps.
+// Der Tag einer Zeit: ihr Datum in der Ortszeit, als Kalendertag.
 static int32_t prv_tag(time_t t) {
+  return kalender_tag(t);
+}
+
+// Der Tag, wie ihn 0.15.0 und frueher zaehlten: Ortsmitternacht in Sekunden
+// seit 1970, ganzzahlig durch 86400. Nur noch fuer die Umstellung.
+static int32_t prv_tag_bis_015(time_t t) {
   struct tm *lt = localtime(&t);
   const time_t midnight = t - (lt->tm_hour * 3600 + lt->tm_min * 60 + lt->tm_sec);
   return (int32_t)(midnight / 86400);
@@ -155,6 +167,41 @@ static void prv_fake_plan(void) {
 
 static bool prv_parse(const uint8_t *data, uint16_t len, PlanItem *fresh);
 
+static void prv_save_plan(void) {
+  uint8_t buf[SC_MAX_ITEMS * SC_ITEM_BYTES];
+  persist_write_data(PERSIST_PLAN, buf, plan_to_bytes(buf));
+}
+
+// GESPEICHERTE TAGE AUF KALENDERTAGE UMSTELLEN, einmal.
+//
+// Verschoben wird um den Unterschied beider Zaehlungen JETZT: dann steht
+// heute dieselbe Phase da wie vor der Aktualisierung, und ein heute gesetzter
+// Haken gilt weiter fuer heute. In Zuerich ist das +1, in New York 0, in
+// London im Sommer +1 und im Winter 0.
+// Ein gemerkter Tag von gestern bleibt gestern und faellt mit dem naechsten
+// prv_roll_day weg; einer, der vorausliegt (Uhr fraglich), behaelt seinen
+// Abstand.
+static void prv_tage_umstellen(void) {
+  if (persist_exists(PERSIST_TAGE) && persist_read_int(PERSIST_TAGE) >= TAGE_KALENDER) return;
+  const time_t jetzt = time(NULL);
+  const int32_t versatz = prv_tag(jetzt) - prv_tag_bis_015(jetzt);
+  if (versatz != 0) {
+    if (persist_exists(PERSIST_DAY)) {
+      s_taken_day += versatz;
+      persist_write_int(PERSIST_DAY, (int)s_taken_day);
+    }
+    bool plan = false;
+    for (int i = 0; i < SC_MAX_ITEMS; i++) {
+      if (!s_items[i].used) continue;
+      s_items[i].anchor_day += versatz;
+      plan = true;
+    }
+    if (plan) prv_save_plan();
+  }
+  APP_LOG(APP_LOG_LEVEL_INFO, "Tage als Kalendertage, um %d verschoben", (int)versatz);
+  persist_write_int(PERSIST_TAGE, TAGE_KALENDER);
+}
+
 void plan_init(void) {
   // DER GESPEICHERTE PLAN IST KEIN NEUER. Frueher lief er durch
   // plan_set_from_bytes - gegen ein noch leeres s_items war dort jeder Name
@@ -168,10 +215,11 @@ void plan_init(void) {
       memcpy(s_items, gespeichert, sizeof(s_items));
     }
   }
+  s_taken_day = persist_exists(PERSIST_DAY) ? (int32_t)persist_read_int(PERSIST_DAY) : 0;
+  prv_tage_umstellen();
 #ifdef SC_FAKE_PLAN
   prv_fake_plan();
 #endif
-  s_taken_day = persist_exists(PERSIST_DAY) ? (int32_t)persist_read_int(PERSIST_DAY) : 0;
   s_taken = persist_exists(PERSIST_TAKEN) ? (uint8_t)persist_read_int(PERSIST_TAKEN) : 0;
   // Fehlt der Wert (Haken von vor 0.14.0), bleiben die Zeiten 0.
   memset(s_taken_at, 0, sizeof(s_taken_at));
@@ -278,7 +326,12 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   }
 
   memcpy(s_items, fresh, sizeof(s_items));
-  persist_write_data(PERSIST_PLAN, data, len < sizeof(s_items) ? len : (uint16_t)sizeof(s_items));
+  // GESPEICHERT WIRD DER GELESENE PLAN, nicht die empfangenen Bytes: immer
+  // 6 x 26 Byte, auch wenn 25-Byte-Eintraege oder mehr als sechs kamen. Bis
+  // 0.15.0 wurde auf sizeof(s_items) gekappt (168 mit Fuellbytes) - sieben
+  // alte Eintraege ergaben 168 Byte, die plan_init als 26er-Format las, und
+  // der Plan war nach dem Neustart zerstueckelt (Audit N2).
+  prv_save_plan();
   APP_LOG(APP_LOG_LEVEL_INFO, "Plan uebernommen: %d Eintraege", plan_count());
   return true;
 }

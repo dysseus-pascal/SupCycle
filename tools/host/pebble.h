@@ -1,7 +1,8 @@
-// Nur fuer die Host-Tests in tools/: so viel vom Pebble-SDK, wie plan.c,
-// cycle.c, prefs.c, strings.c und phone.c brauchen. Persist liegt im
-// Speicher (attrappe_persist.c), die Uhrzeit stellt der Test, Nachrichten,
-// Zeitgeber und Verbindung spielt die Attrappe (attrappe.c).
+// Nur fuer die Host-Tests in tools/: so viel vom Pebble-SDK, wie die App
+// braucht. Persist liegt im Speicher (attrappe_persist.c), die Uhrzeit
+// stellt der Test, Nachrichten, Zeitgeber, Verbindung und Wecker spielt die
+// Attrappe (attrappe.c). Fenster, Ebenen und Zeichnen (attrappe_ui.c) braucht
+// nur der Test der ganzen App (app_host_test.c).
 //
 // WARUM NICHT IM EMULATOR: dort laesst sich die Zeit nicht halten (jeder
 // pebble-Befehl stellt sie neu), und ein Neustart der App mitten im Tag ist
@@ -15,6 +16,7 @@
 
 #define APP_LOG_LEVEL_INFO 0
 #define APP_LOG_LEVEL_WARNING 1
+#define APP_LOG_LEVEL_ERROR 2
 // Das Log landet in attrappe_log_text: ein Test kann pruefen, dass ein
 // Fehler NICHT still bleibt.
 void attrappe_log(int level, const char *fmt, ...);
@@ -117,6 +119,7 @@ void app_timer_cancel(AppTimer *timer);
 int attrappe_zeitgeber_offen(void);
 uint32_t attrappe_zeitgeber_ms(int nummer);    //< Dauer des n-ten offenen
 int attrappe_zeitgeber_ablaufen(void);         //< alle offenen einmal ausloesen
+void attrappe_zeitgeber_vorspulen(uint32_t ms); //< so viel Zeit vergeht, der Reihe nach
 
 // --- Verbindung ---
 typedef void (*ConnectionHandler)(bool connected);
@@ -129,3 +132,35 @@ void attrappe_verbindung(bool da);
 
 const char *i18n_get_system_locale(void);
 extern const char *attrappe_sprache;
+
+// --- Wecker, wie pebbleos services/wakeup/service.c ---
+// Hoechstens 8 je App (E_OUT_OF_RESOURCES), keiner in der Minute um einen
+// anderen (E_RANGE), keiner in der Vergangenheit (E_INVALID_ARGUMENT).
+// Feuert einer, ist er weg; laeuft die App, bekommt ihn der Abonnent.
+#define E_INVALID_ARGUMENT (-4)
+#define E_OUT_OF_RESOURCES (-7)
+#define E_RANGE (-8)
+typedef int32_t WakeupId;
+typedef void (*WakeupHandler)(WakeupId wakeup_id, int32_t cookie);
+typedef enum {
+  APP_LAUNCH_SYSTEM = 0, APP_LAUNCH_USER, APP_LAUNCH_PHONE, APP_LAUNCH_WAKEUP,
+  APP_LAUNCH_WORKER, APP_LAUNCH_QUICK_LAUNCH, APP_LAUNCH_TIMELINE_ACTION, APP_LAUNCH_SMARTSTRAP,
+} AppLaunchReason;
+WakeupId wakeup_schedule(time_t timestamp, int32_t cookie, bool notify_if_missed);
+void wakeup_cancel_all(void);
+bool wakeup_get_launch_event(WakeupId *wakeup_id, int32_t *cookie);
+void wakeup_service_subscribe(WakeupHandler handler);
+AppLaunchReason launch_reason(void);
+typedef struct { WakeupId id; time_t zeit; int32_t cookie; bool melden; } AttrappeWecker;
+void attrappe_wecker_leeren(void);
+int attrappe_wecker_zahl(void);
+const AttrappeWecker *attrappe_wecker(int nummer);   //< nach Zeit sortiert
+// Wie die App gestartet wird: von Hand oder durch einen Wecker mit Cookie.
+void attrappe_start(AppLaunchReason grund, int32_t cookie);
+// Der frueheste Wecker feuert, waehrend die App laeuft: Uhr auf seine Zeit,
+// Eintrag weg, Abonnent gerufen. false, wenn keiner steht.
+bool attrappe_wecker_feuert(void);
+bool attrappe_wecker_abonniert(void);
+
+// --- Was die ganze App zusaetzlich braucht (attrappe_ui.c) ---
+#include "pebble_ui.h"

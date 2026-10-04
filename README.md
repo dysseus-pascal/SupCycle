@@ -181,6 +181,10 @@ Pause**.
 
 - X = 1 heisst täglich. X = 3 heisst jeden dritten Tag, ab dem Ankertag gezählt.
 - **Y leer heisst unbegrenzt** — dann gibt es weder Kur noch Pause.
+- **Y gesetzt, Z leer: eine einmalige Kur.** Nach Y Wochen ist sie vorbei —
+  das Präparat steht nicht mehr an, die Uhr erinnert nicht mehr, und die
+  Zyklusseite sagt „Kur beendet“. Bis 0.15.0 lief sie endlos weiter („Woche 72
+  von 4“).
 - Z zählt nur, wenn Y gesetzt ist. Eine Pause ohne Einnahmewochen wäre eine
   Angabe über etwas, das nicht stattfindet, und wird verworfen.
 
@@ -222,7 +226,15 @@ Sechs Zeilen decken jeden Stack ab, den man von Hand pflegt.
 richtige Phase zeigt, statt bei Woche 1 anzufangen. Wer seit fünf Wochen
 Ashwagandha nimmt, trägt fünf Wochen ein und sieht Woche 5.
 
-Die Uhr bekommt den fertigen Plan als **einen Datenblock** (25 Byte je Eintrag)
+**Danach bleibt der Ankertag.** Die Seite kennt nur ganze Wochen; bis 0.15.0
+rechnete jedes Speichern daraus einen neuen Anker, und der Zyklus rutschte um
+bis zu sechs Tage, das Raster „alle X Tage“ mit ihm. Jetzt merkt sich die
+Telefonseite je Platz den Anker als Datum, den sie als „seit N Wochen“ in die
+Seite gestellt hat (`supcycle_anker`). Kommt derselbe Name mit derselben
+Wochenzahl zurück, bleibt er; nur eine geänderte Wochenzahl oder ein neuer Name
+setzt ihn neu. Beim Öffnen zeigt die Seite die Wochen von heute.
+
+Die Uhr bekommt den fertigen Plan als **einen Datenblock** (26 Byte je Eintrag)
 und rechnet daraus selbst aus, was heute ansteht. Sie fragt nie wieder nach und
 läuft ohne Telefon mit dem zuletzt empfangenen Plan weiter.
 
@@ -235,8 +247,37 @@ diesen zweiten Weg verpuffte jede Eingabe still.
 
 Nicht in Sekunden. Sommerzeit verschiebt einen Tag um eine Stunde, und über acht
 Wochen summiert sich das zu einem Fehler von einem Tag — der Zyklus schaltete
-dann einen Tag zu früh oder zu spät um. Uhr und Telefon zählen beide ganze Tage
-seit der Epoche, aus der Ortszeit.
+dann einen Tag zu früh oder zu spät um.
+
+**Ein Tag ist ein Datum** (`src/c/kalender.c`): die Tage vom 01.01.1970 bis zum
+Datum der Ortszeit (days_from_civil). Uhr, Telefonseite und Boulder zählen so.
+Bis 0.15.0 hiess „Tag“ die Ortsmitternacht in Sekunden, durch 86400 geteilt.
+Das ist kein Kalendertag: östlich von Greenwich war es der Vortag, und in
+London hatten Samstag und Sonntag der Frühjahrsumstellung dieselbe Nummer —
+ein Haken vom Samstag stand am Sonntag noch da. Im Herbst sprang die Nummer
+mitten am Tag.
+
+**Die Umstellung verliert nichts.** Beim ersten Start stellt die Uhr ihren
+gemerkten Tag und die Anker einmal um (Persist-Fach 9, Fassung 2), die
+Telefonseite ihren gespeicherten Plan (`supcycle_tage`). Verschoben wird um
+den Unterschied beider Zählungen *heute* — in Zürich +1, in New York 0, in
+London im Sommer +1, im Winter 0. Was heute abgehakt ist, bleibt abgehakt, und
+jeder Zyklus steht in derselben Phase wie vorher.
+
+**Boulder und die Uhr-App kennen beide Zählungen.** Die Uhr schickt mit dem Plan
+`PLANFASSUNG` (Schlüssel 10048, Wert 2): Anker als Kalendertag, und
+Einnahmewochen ohne Pause sind eine Kur, die endet. Fehlt der Schlüssel, ist es
+eine Uhr-App bis 0.15.0, und Boulder rechnet wie sie. Die Haken selbst hängen
+in beiden Richtungen am Datum `TODAY` (JJJJMMTT), nicht an einer Tagesnummer:
+
+| Boulder | Uhr-App | Haken | Vorschau „heute fällig“, bevor die Uhr sich meldet |
+|---|---|---|---|
+| neu | neu | bleiben | richtig |
+| neu | bis 0.15.0 | bleiben | richtig (rechnet wie die alte Uhr) |
+| bis 0.49 | neu | bleiben | östlich von Greenwich einen Tag daneben, und eine beendete Kur gilt als fällig - bis die Uhr sich meldet |
+| bis 0.49 | bis 0.15.0 | bleiben | wie bisher |
+
+Was die Uhr meldet (`DUE`, `TAKEN`), gilt in jedem Fall.
 
 ### Ein Haken gilt einen Tag
 
@@ -289,20 +330,32 @@ node tools/pkjs_pin_test.js                         # Timeline-Pins
 node tools/clay_count_test.js   # Anzahlsvorwahl der Konfigseite
 node tools/strings_check.js src/c/strings_table.h
 sh tools/plan_host_test.sh      # Hakenzeiten, Zurücknehmen, Tageswechsel, Persist-Fächer (Rechner-C, pebble.h als Attrappe)
-sh tools/phone_host_test.sh     # Startanfrage, Nachfassen, Nachholen, Frage nach der Zeit, Platz im Postausgang
+sh tools/phone_host_test.sh     # Startanfrage, Nachfassen, Nachholen, Frage nach der Zeit, Platz im Postausgang, Warten auf das Telefon
+sh tools/tage_host_test.sh      # Kalendertage, Umstellung von 0.15.0, gespeicherter Plan, Kur, Zyklus-Selbsttest (Zürich, London, New York, UTC)
+sh tools/remind_host_test.sh    # Weckplan: 60 Tage voraus, Wecker zum Neuplanen, Umstellungstage (drei Zonen)
+sh tools/app_host_test.sh       # die ganze App: Weckstarts, Wecker bei offener App, Genommen und Telefon, Zyklusseite
 node tools/pkjs_start_test.js   # Startzweige der Telefonseite, Antwort auf die Frage nach der Zeit
+node tools/pkjs_tage_test.js    # Kalendertage und Anker auf der Telefonseite, Anker durch die Konfigseite
+node tools/pkjs_clay_test.js    # Namen mit $ und < durch das echte Clay (npm install)
 node tools/catch_check.js       # kein catch ohne Log in der Telefonseite
+sh tools/alle_tests.sh          # alles oben ohne Emulator, Node-Tests in drei Zonen - so läuft es in der CI
 ```
+
+**Die CI prüft vor dem Bauen** (`.github/workflows/bauen.yml`, Schritt
+„Prüfen“): ein roter Test bricht den Lauf ab, dann wird nichts gebaut,
+eingecheckt oder veröffentlicht.
 
 `src/c/cycle.c` hängt bewusst an nichts — kein `pebble.h`, nur Ganzzahlen. Das
 ist hier kein Selbstzweck: **eine Zyklusrechnung, die um einen Tag danebenliegt,
 fällt im Betrieb erst nach Wochen auf, und dann hat man schon falsch dosiert.**
-`cycle_selftest.c` stellt sie gegen 34 von Hand nachgerechnete Erwartungen.
+`cycle_selftest.c` stellt sie gegen 62 von Hand nachgerechnete Erwartungen.
 
 Der Zyklustest läuft **im Emulator, auf der 32-Bit-ARM-Zielarchitektur**, wo
-die Rechnung auch im Betrieb läuft. Die Host-Tests (`plan_host_test.sh`,
-`phone_host_test.sh`) laufen mit dem C-Compiler des Rechners und einer
-Attrappe von `pebble.h` (`tools/host/`).
+die Rechnung auch im Betrieb läuft — und mit denselben Erwartungen in
+`tage_host_test.sh` auf dem Rechner, damit die CI ihn fährt. Die Host-Tests
+laufen mit dem C-Compiler des Rechners und einer Attrappe von `pebble.h`
+(`tools/host/`): Persist, AppMessage, Zeitgeber, Wecker (wie pebbleos: acht je
+App, eine Minute Abstand), dazu Fenster und Tasten für den Test der ganzen App.
 
 `demo` setzt einen Beispielplan ein, damit sich beide Ansichten im Emulator
 ansehen lassen; dort gibt es keine Konfigseite. Die Zyklen stehen dabei
@@ -342,6 +395,14 @@ pkjs nicht bereit ist (der Emulator selbst bestätigt alles). Seitdem:
 - Die Telefonseite legt einen leeren Plan der Uhr nie über einen
   gespeicherten, ob mit oder ohne Anfrage, sondern schickt ihr den gespeicherten.
 
+**Namen mit `$` und `<` kommen unverändert durch.** Clay setzt die gespeicherten
+Werte mit `String.replace` in die Seite ein, und dort sind `$&`, `$'`, `` $` ``
+und `$$` Ersetzungsmuster; ein `</script>` im Namen beendete das Skript der
+Seite. Bis 0.15.0 war die Seite mit so einem Namen kaputt. Clay bleibt
+ungepatcht: es bekommt eine Marke statt der Einstellungen, und an ihre Stelle
+setzt die Telefonseite danach das JSON, mit `<` als `\u003c`. Eine
+abgebrochene Seite („CANCELLED“) bringt sie nicht mehr aus dem Tritt.
+
 ## Erinnerungen
 
 Zur eingetragenen Uhrzeit meldet sich die Uhr: ein Vollbild mit der Kapsel, der
@@ -372,7 +433,9 @@ so trug die Mittagsrunde den Morgen nach, den man bewusst hatte liegen lassen.
 **Höchstens dreimal.** Wer dreimal „später" sagt, meint „heute nicht": beim
 vierten Druck verfällt die Runde wie beim Wegdrücken, und das Zeichen für
 „später" ist dann schon aus der Leiste verschwunden. Unten auf dem Schirm steht,
-der wievielte Aufschub es ist.
+der wievielte Aufschub es ist. Der Zähler gilt der Runde dieses Tages; bis
+0.15.0 löschte ihn das Neustellen nach jedem Klopfen des Aufschubs, und jeder
+Aufschub war wieder der erste.
 
 **Der Aufschub überlebt einen Neustart.** Er liegt im Persist. Bis 0.10.0
 stand er nur als Wecker — und weil die App bei jedem Start alle Wecker neu
@@ -409,12 +472,29 @@ Zyklus ist wertlos.
 
 **Der Schirm geht dabei an.** Ein Pebble-Wakeup startet die App im Vordergrund;
 einen stillen Hintergrundlauf gibt es nicht. Nach dem Abhaken schliesst sie sich
-wieder.
+wieder — **aber erst, wenn das Telefon den Haken hat**, höchstens 5 s später,
+ohne Verbindung sofort. Bis 0.15.0 ging sie gleich zu, und die Uhr verwarf, was
+noch im Postausgang lag.
 
-Pebble erlaubt höchstens **acht** geplante Wakeups je App. Geplant werden immer
-die nächsten acht über zwei Tage hinweg, und bei jedem Start neu — so hält sich
-der Weckplan selbst aktuell, auch nach einem Neustart, einer Zeitumstellung oder
-einem Zyklus, der über Nacht in die Pause gewechselt ist.
+**Ein Wecker bei offener App erinnert genauso.** Läuft die App schon, startet
+die Uhr sie nicht neu, sondern meldet den Wecker nur — bis 0.15.0 hörte niemand
+zu, und die Erinnerung verpuffte samt dem nächsten Weckplan.
+
+Pebble erlaubt höchstens **acht** geplante Wakeups je App. Geplant werden die
+nächsten sieben Erinnerungen, **bis zu 60 Tage voraus**, und bei jedem Start
+neu — so hält sich der Weckplan selbst aktuell, auch nach einem Neustart, einer
+Zeitumstellung oder einem Zyklus, der über Nacht in die Pause gewechselt ist.
+Bis 0.15.0 waren es zwei Tage: ein Präparat „alle 2 Tage“ oder eine Pause
+liess danach keinen Wecker stehen, und die Erinnerungen hörten still auf.
+Die Uhrzeit gilt auch am Umstellungstag: 08:00 ist 08:00, nicht 07:00 oder
+09:00.
+
+**Der achte ist der Wecker zum Neuplanen**, jede Nacht um 03:00. Die App stellt
+dann alle Wecker neu und geht sofort wieder zu — ohne Fenster, ohne Vibration,
+ohne Nachricht ans Telefon. Er fängt ab, was die Vorausplanung allein nicht
+kann: eine neue Zeitzone, eine Sommerzeitregel, die die Uhr erst später
+erfährt, und eine Pause, die länger dauert als 60 Tage. Verpasst ihn die Uhr
+(aus), meldet er sich nicht.
 
 ## Die Kapsel
 
@@ -460,6 +540,15 @@ Telefon rechnete sie über UTC zurück — bei positiver Zeitzone landete der Pi
 einen Tag zu früh, also in der Vergangenheit. Der Prüfstand hat das gefunden,
 bevor es eine Uhr gesehen hat.
 
+**Was nicht mehr ansteht, geht aus der Timeline.** Wird ein Präparat entfernt,
+verschoben oder geht sein Zyklus in die Pause, löscht die Telefonseite den Pin
+von heute (REST-`DELETE`, ohne Token `Pebble.deleteTimelinePin`). Bis 0.15.0
+blieb er stehen, samt Aufforderung, es zu nehmen.
+
+**REST zuerst, lokal als Rückfall.** Mit Token gehen die Pins an die
+Rebble-Schnittstelle; scheitert sie (Status, Netz), geht derselbe Pin über die
+lokale API. Unter Boulder fängt die Telefon-App REST ohnehin ab.
+
 ## Und noch jemand hört mit
 
 Seit 0.10.0 gehen mit derselben Meldung auch die **Namen** hinaus — alle sechs
@@ -481,7 +570,7 @@ alle folgenden Nummern verrutschen lassen, und die mithörende App trüge still
 Unsinn ein. Der Postausgang wuchs dafür von 64 auf 256 Byte: sechs mal sechzehn
 Byte Name plus Trenner sind gut hundert, und 64 reichten für die drei Zahlen
 allein. (Seit der Plan in jeder Meldung mitfährt, sind es 512 Byte; der
-grösste Fall braucht 375, nachgezählt in `tools/phone_host_test.c`.)
+grösste Fall braucht 386, nachgezählt in `tools/phone_host_test.c`.)
 
 Geprüft mit `tools/pkjs_pin_test.js` (22 Prüfungen): Kennung, Zeitpunkt,
 Symbole, und dass ein unveränderter Pin **nicht** erneut hinausgeht, ein
@@ -516,8 +605,8 @@ nachgestellt: Animation an gespeichert, App einmal neu gestartet, auf dem
 Telefon steht „aus“). Umgekehrt ersetzte ein
 Umschalten der Animation die sechs Zeiten durch eine Zahl. Jetzt holt die Uhr
 einen Zeitenblock aus Fach 4 einmal nach Fach 8 und räumt Fach 4; die
-Animation gilt dabei als an, bis man sie wieder umstellt. Belegt sind: 1 bis 3
-und 8 `plan.c`, 4 `prefs.c`, 5 bis 7 `remind.c`.
+Animation gilt dabei als an, bis man sie wieder umstellt. Belegt sind: 1 bis 3,
+8 und 9 `plan.c`, 4 `prefs.c`, 5 bis 7 `remind.c`.
 
 ## Health Connect (über Boulder)
 

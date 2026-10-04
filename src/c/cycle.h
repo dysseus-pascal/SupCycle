@@ -16,6 +16,7 @@
 typedef enum {
   CyclePhaseOff = 0,   //< Pause
   CyclePhaseOn,        //< Einnahme
+  CyclePhaseDone,      //< Kur vorbei: Einnahmewochen ohne Pause sind abgelaufen
 } CyclePhase;
 
 typedef struct {
@@ -27,10 +28,13 @@ typedef struct {
 
 // Zustand eines zyklischen Präparats.
 //
-//   anchor_day  Tag, an dem Woche 1 der Einnahme begann (Tage seit Epoche)
-//   today       heutiger Tag (Tage seit Epoche)
+//   anchor_day  Tag, an dem Woche 1 der Einnahme begann (Kalendertag)
+//   today       heutiger Tag (Kalendertag, siehe kalender.h)
 //   weeks_on    Wochen Einnahme, mindestens 1
-//   weeks_off   Wochen Pause, 0 = nie Pause (dann immer CyclePhaseOn)
+//   weeks_off   Wochen Pause. 0 = keine Pause: eine EINMALIGE KUR, nach
+//               weeks_on Wochen CyclePhaseDone und nie wieder faellig.
+//               (Unbegrenzt heisst weeks_on = 0 - das rechnet plan.c gar
+//               nicht erst hier.)
 //
 // Liegt `today` vor dem Anker, gilt der Anker - ein Zyklus, der erst morgen
 // beginnt, soll heute nicht rückwärts gerechnet werden.

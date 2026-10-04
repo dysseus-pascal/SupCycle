@@ -1,5 +1,5 @@
 // Persist im Speicher fuer die Host-Tests - so viele Faecher, wie die App
-// belegt (plan.c 1..3 und 8, prefs.c 4, remind.c 5..7), mit Luft.
+// belegt (plan.c 1..3, 8 und 9, prefs.c 4, remind.c 5..7 und 10), mit Luft.
 #include <pebble.h>
 
 #define FAECHER 16

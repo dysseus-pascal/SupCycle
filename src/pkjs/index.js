@@ -35,7 +35,9 @@ var SLOT_UNUSED = 0, SLOT_USED = 1;
 
 // --- Timeline ---
 // Wie in Drinktervall: zuerst die Rebble-REST-Schnittstelle mit dem Token der
-// Pebble-App, ohne Token die lokale Pebble.insertTimelinePin.
+// Pebble-App, ohne Token die lokale Pebble.insertTimelinePin. SCHEITERT REST
+// (401, kein Netz), geht derselbe Pin lokal hinaus (Audit M5) - bis 0.15.0
+// fehlte er dann ganz. Unter Boulder faengt die Telefon-App REST ohnehin ab.
 var API_URL = 'https://timeline-api.rebble.io/v1/user/pins/';
 var PIN_COLOR = '#005555';                 // wie die Seitenleiste der App
 var PIN_STORE = 'supcycle_pins_v1';        // id -> { sig, sentAt }
@@ -86,10 +88,18 @@ function getClay() {
   return s_clay;
 }
 
-// Heutiger Tag als Tage seit der Epoche, aus der ORTSZEIT gerechnet. Muss zu
-// plan_today() auf der Uhr passen — beide zählen ganze Tage, nicht Sekunden,
-// damit die Sommerzeit den Zyklus nicht um einen Tag verschiebt.
+// Heutiger Tag als KALENDERTAG: Tage vom 01.01.1970 bis zum heutigen Datum
+// der Ortszeit. Muss zu plan_today() auf der Uhr passen (src/c/kalender.h) -
+// beide zählen ganze Tage, nicht Sekunden, damit die Sommerzeit den Zyklus
+// nicht um einen Tag verschiebt. Date.UTC rechnet das Datum ohne Zeitzone.
 function todayDay() {
+  var now = new Date();
+  return Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+}
+
+// Der Tag, wie ihn 0.15.0 und frueher zaehlten: Ortsmitternacht durch einen
+// Tag. Oestlich von Greenwich der Vortag. Nur noch fuer die Umstellung.
+function todayDayBis015() {
   var now = new Date();
   var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.floor(midnight.getTime() / 86400000);
@@ -127,6 +137,56 @@ function nameBytes(text) {
   return out;
 }
 
+// ------------------------------------------------ Der Anker als Datum
+//
+// DER ANKER UEBERSTEHT DIE KONFIGSEITE. Die Seite kennt nur "Zyklus laeuft
+// seit N Wochen". Bis 0.15.0 wurde daraus bei jedem Speichern ein neuer Anker
+// (heute - N Wochen) - und der Zyklus rutschte um die Tage seit dem letzten
+// vollen Wochenschritt, bis zu sechs, das Raster "alle X Tage" mit ihm (Audit
+// W-H1). Jetzt merkt sich diese Seite zu jedem Platz, welchen Anker sie als
+// "seit N Wochen" in die Seite gestellt hat - als DATUM. Kommt beim Speichern
+// derselbe Name mit derselben Wochenzahl zurueck, bleibt dieser Anker.
+// Nur eine geaenderte Wochenzahl oder ein neuer Name rechnet neu.
+var ANKER_KEY = 'supcycle_anker';   // je Platz { name, datum: 'JJJJ-MM-TT', seit } oder null
+
+function datumAusTag(tag) { return new Date(tag * 86400000).toISOString().slice(0, 10); }
+function tagAusDatum(datum) {
+  var ms = Date.parse(datum);
+  return isFinite(ms) ? Math.round(ms / 86400000) : null;
+}
+
+// Wie viele volle Wochen seit dem Anker, so wie die Seite sie anbietet.
+function seitWochen(anker, today) {
+  var seit = Math.floor((today - anker) / 7);
+  if (seit < 0) seit = 0;
+  if (seit > 25) seit = 25;
+  return seit;
+}
+
+function gemerkteAnker() {
+  try {
+    var a = JSON.parse(localStorage.getItem(ANKER_KEY) || 'null');
+    return (a && a.length) ? a : [];
+  } catch (e) { meldeFehler('Anker lesen', e); return []; }
+}
+
+// Die Wochenzahlen, die in die Seite kommen, und dazu die Anker merken.
+// Rueckgabe: { SINCE1: '3', ... } fuer die Plaetze mit Eintrag.
+function ankerInDieSeite(items) {
+  var today = todayDay();
+  var merken = [];
+  var clay = {};
+  for (var i = 0; i < SLOTS; i++) {
+    var it = items && items[i];
+    if (!it || !it.name || typeof it.anchor !== 'number') { merken.push(null); continue; }
+    var seit = seitWochen(it.anchor, today);
+    merken.push({ name: it.name, datum: datumAusTag(it.anchor), seit: seit });
+    clay['SINCE' + (i + 1)] = String(seit);
+  }
+  try { localStorage.setItem(ANKER_KEY, JSON.stringify(merken)); } catch (e) { meldeFehler('Anker merken', e); }
+  return clay;
+}
+
 function int32le(v) {
   var n = v | 0;
   return [n & 0xff, (n >> 8) & 0xff, (n >> 16) & 0xff, (n >> 24) & 0xff];
@@ -147,6 +207,7 @@ function num(dict, key, fallback) {
  */
 function buildPlan(dict) {
   var today = todayDay();
+  var gemerkt = gemerkteAnker();
   var bytes = [];
   var items = [];
   var used = 0;
@@ -193,10 +254,13 @@ function buildPlan(dict) {
 
     // Anker: der Tag, an dem Woche 1 begann. "Zyklus läuft seit N Wochen"
     // schiebt ihn entsprechend zurück, damit die Uhr sofort die richtige
-    // Phase zeigt statt bei eins anzufangen.
+    // Phase zeigt statt bei eins anzufangen - aber nur, wenn die Wochenzahl
+    // oder der Name neu ist. Sonst gilt der Anker, den die Seite zeigte.
     var since = num(dict, 'SINCE' + i, 0);
     if (since < 0 || since > 25) since = 0;
-    var anchor = today - since * 7;
+    var alt = gemerkt[i - 1];
+    var altTag = alt && alt.name === name && alt.seit === since ? tagAusDatum(alt.datum) : null;
+    var anchor = altTag !== null ? altTag : today - since * 7;
 
     bytes = bytes.concat(
       nameBytes(name),
@@ -287,8 +351,7 @@ function itemsFromBytes(bytes) {
 // Den Plan der Uhr uebernehmen: in den Speicher, in die Konfigseite.
 function adoptWatchPlan(bytes, fx) {
   var items = itemsFromBytes(bytes);
-  var today = todayDay();
-  var clay = {};
+  var clay = ankerInDieSeite(items);
   var last = 0;
   for (var i = 0; i < SLOTS; i++) {
     var it = items[i];
@@ -303,10 +366,6 @@ function adoptWatchPlan(bytes, fx) {
     clay['EVERY' + n] = String(it.every);
     clay['ON' + n] = it.on ? String(it.on) : '';
     clay['OFF' + n] = it.off ? String(it.off) : '';
-    var since = Math.floor((today - it.anchor) / 7);
-    if (since < 0) since = 0;
-    if (since > 25) since = 25;
-    clay['SINCE' + n] = String(since);
   }
   clay.COUNT = String(Math.max(1, last));
   if (fx !== undefined) clay.FX = !!fx;
@@ -362,6 +421,42 @@ function storedItems() {
     meldeFehler('Eintraege lesen', e);
     return null;
   }
+}
+
+// GESPEICHERTE ANKER AUF KALENDERTAGE UMSTELLEN, einmal - wie plan_init auf
+// der Uhr, mit derselben Verschiebung (beide Zaehlungen heute). Ohne das
+// ginge ein noch nicht zugestellter Plan (Vermerk) oder der Plan fuer eine
+// frische Uhr mit Ankern der alten Zaehlung hinaus, und der Zyklus stuende
+// einen Tag daneben.
+var TAGE_KEY = 'supcycle_tage';   // '2' = Kalendertage
+function tageUmstellen() {
+  try {
+    if (localStorage.getItem(TAGE_KEY) === '2') return;
+    var versatz = todayDay() - todayDayBis015();
+    if (versatz) {
+      var raw = localStorage.getItem(PLAN_KEY);
+      var bytes = raw ? JSON.parse(raw) : null;
+      if (bytes && bytes.length === SLOTS * ITEM_BYTES) {
+        for (var i = 0; i < SLOTS; i++) {
+          var o = i * ITEM_BYTES;
+          if (!bytes[o + 18]) continue;
+          var a = int32le((bytes[o + 22] | (bytes[o + 23] << 8) | (bytes[o + 24] << 16) | (bytes[o + 25] << 24)) + versatz);
+          for (var b = 0; b < 4; b++) bytes[o + 22 + b] = a[b];
+        }
+        localStorage.setItem(PLAN_KEY, JSON.stringify(bytes));
+      }
+      var rawItems = localStorage.getItem(ITEMS_KEY);
+      var items = rawItems ? JSON.parse(rawItems) : null;
+      if (items && items.length) {
+        for (var k = 0; k < items.length; k++) {
+          if (items[k] && typeof items[k].anchor === 'number') items[k].anchor += versatz;
+        }
+        localStorage.setItem(ITEMS_KEY, JSON.stringify(items));
+      }
+    }
+    localStorage.setItem(TAGE_KEY, '2');
+    console.log('Anker als Kalendertage, um ' + versatz + ' verschoben');
+  } catch (e) { meldeFehler('Tage umstellen', e); }
 }
 
 function storedPlan() {
@@ -422,25 +517,38 @@ function buildPin(id, item, ymd, taken, texts) {
   };
 }
 
-function insertViaRest(pin, token, cb) {
+// Ein Auftrag ist { pin, sig } zum Setzen oder { id, weg: true } zum
+// Entfernen eines Pins, der nicht mehr ansteht.
+function auftragId(a) { return a.weg ? a.id : a.pin.id; }
+
+function viaRest(a, token, cb) {
   var xhr = new XMLHttpRequest();
   xhr.onload = function () { cb(this.status >= 200 && this.status < 300, 'REST ' + this.status); };
   xhr.onerror = function () { cb(false, 'REST Netzwerkfehler'); };
-  xhr.open('PUT', API_URL + pin.id);
+  xhr.open(a.weg ? 'DELETE' : 'PUT', API_URL + auftragId(a));
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.setRequestHeader('X-User-Token', '' + token);
-  xhr.send(JSON.stringify(pin));
+  xhr.send(a.weg ? null : JSON.stringify(a.pin));
 }
 
-function insertViaLocal(pin, cb) {
+function lokalDa(a) {
+  return typeof (a.weg ? Pebble.deleteTimelinePin : Pebble.insertTimelinePin) === 'function';
+}
+
+// Lokal setzen oder entfernen. Mit Rueckrufen (drei Parameter) wird auf sie
+// gewartet, hoechstens 5 s; ohne gilt der Aufruf als erledigt - so bietet es
+// Boulder an (ein Parameter, die Kennung beim Entfernen).
+function viaLocal(a, cb) {
   try {
-    if (Pebble.insertTimelinePin.length >= 3) {
+    var fn = a.weg ? Pebble.deleteTimelinePin : Pebble.insertTimelinePin;
+    var arg = a.weg ? a.id : a.pin;
+    if (fn.length >= 3) {
       var done = false;
       var finish = function (ok) { if (!done) { done = true; cb(ok, 'lokal'); } };
       setTimeout(function () { finish(false); }, 5000);
-      Pebble.insertTimelinePin(pin, function () { finish(true); }, function () { finish(false); });
+      fn(arg, function () { finish(true); }, function () { finish(false); });
     } else {
-      Pebble.insertTimelinePin(pin);
+      fn(arg);
       cb(true, 'lokal');
     }
   } catch (e) {
@@ -449,18 +557,28 @@ function insertViaLocal(pin, cb) {
   }
 }
 
-function sendAll(queue, insert) {
+// REST zuerst; scheitert es, derselbe Auftrag lokal.
+function viaRestMitRueckfall(a, token, cb) {
+  viaRest(a, token, function (ok, info) {
+    if (ok || !lokalDa(a)) { cb(ok, info); return; }
+    viaLocal(a, function (ok2, info2) { cb(ok2, info + ', dann ' + info2); });
+  });
+}
+
+function sendAll(queue, ausfuehren) {
   (function next() {
-    var item = queue.shift();
-    if (!item) { console.log('timeline: fertig'); return; }
-    insert(item.pin, function (ok, info) {
-      console.log('timeline: ' + item.pin.id + ' -> ' + (ok ? 'ok' : 'fehlgeschlagen') +
-                  ' (' + info + ')');
+    var a = queue.shift();
+    if (!a) { console.log('timeline: fertig'); return; }
+    ausfuehren(a, function (ok, info) {
+      console.log('timeline: ' + (a.weg ? 'weg ' : '') + auftragId(a) + ' -> ' +
+                  (ok ? 'ok' : 'fehlgeschlagen') + ' (' + info + ')');
       // Pro Pin sichern: pkjs wird mit der App beendet, ein Sammelspeichern am
-      // Ende ginge dabei verloren.
+      // Ende ginge dabei verloren. Ein nicht entfernter bleibt vermerkt und
+      // wird beim naechsten Mal wieder versucht.
       if (ok) {
         var st = loadPins();
-        st[item.pin.id] = { sig: item.sig, sentAt: Date.now() };
+        if (a.weg) delete st[a.id];
+        else st[a.pin.id] = { sig: a.sig, sentAt: Date.now() };
         savePins(st);
       }
       next();
@@ -506,36 +624,106 @@ function pushPins(ymd, dueMask, takenMask) {
     if (had && had.sig === sig && now - had.sentAt < RESEND_AFTER_MS) continue;
     queue.push({ pin: buildPin(id, item, ymd, taken, texts), sig: sig });
   }
-  console.log('timeline: ' + queue.length + ' von ' + wanted + ' Pins zu senden');
+  // WAS HEUTE NICHT MEHR ANSTEHT, GEHT AUS DER TIMELINE (Audit M4): ein
+  // entferntes, verschobenes oder in die Pause gegangenes Praeparat stand bis
+  // 0.15.0 als Pin stehen - samt Aufforderung, es zu nehmen.
+  var heute = 'supcycle-' + dayKeyOf(ymd) + '-';
+  Object.keys(store).forEach(function (id) {
+    if (id.indexOf(heute) !== 0) return;
+    var i = parseInt(id.slice(heute.length), 10);
+    if (!(i >= 0 && i < SLOTS)) return;
+    if ((dueMask & (1 << i)) && plan[i] && plan[i].name) return;
+    queue.push({ id: id, weg: true });
+  });
+  console.log('timeline: ' + queue.length + ' Auftraege, ' + wanted + ' Pins stehen an');
   if (queue.length === 0) return;
 
   var useLocal = function (reason) {
-    if (typeof Pebble.insertTimelinePin === 'function') {
-      console.log('timeline: ' + reason + ', nutze lokale API');
-      sendAll(queue, insertViaLocal);
-    } else {
-      console.log('timeline: ' + reason + ', keine lokale API - Pins uebersprungen');
-    }
+    console.log('timeline: ' + reason + ', nutze lokale API');
+    sendAll(queue, function (a, cb) {
+      if (lokalDa(a)) viaLocal(a, cb);
+      else cb(false, 'keine lokale API');
+    });
   };
   if (typeof Pebble.getTimelineToken !== 'function') { useLocal('kein getTimelineToken'); return; }
   Pebble.getTimelineToken(function (token) {
-    sendAll(queue, function (pin, cb) { insertViaRest(pin, token, cb); });
+    sendAll(queue, function (a, cb) { viaRestMitRueckfall(a, token, cb); });
   }, function (error) {
     useLocal('kein Token (' + error + ')');
   });
 }
 
+// --------------------------------------------- Die Einstellungen in der Seite
+
+// '$' UND '<' KOMMEN UNVERAENDERT DURCH (Audit N8). Clay setzt die
+// gespeicherten Werte mit String.replace in die Seite ein: dort sind '$&',
+// "$'", '$`' und '$$' in einem Namen Ersetzungsmuster - aus 'a$&b' wurde
+// 'a$$SETTINGS$$b', aus "a$'b" eine doppelte Seite. Und es maskiert nichts:
+// ein '</script>' im Namen beendete das Skript der Seite vorzeitig. Clay
+// bleibt, wie es ist. Statt der Einstellungen bekommt es eine Marke, und an
+// ihre Stelle kommen danach die Einstellungen als JSON - ohne replace, mit
+// '<' als \u003c (in der Seite wieder '<').
+var SEITEN_MARKE = 'supcycle-einstellungen';
+
+function jsonFuerSeite(werte) {
+  return JSON.stringify(werte)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function konfigUrl() {
+  var echt = null;
+  var werte = {};
+  try {
+    echt = localStorage.getItem('clay-settings');
+    werte = JSON.parse(echt || '{}') || {};
+  } catch (e) { meldeFehler('Konfigseite lesen', e); }
+  var url = null;
+  try {
+    localStorage.setItem('clay-settings', JSON.stringify(SEITEN_MARKE));
+    url = getClay().generateUrl();
+  } catch (e) { meldeFehler('Konfigseite bauen', e); }
+  try {
+    if (echt === null) localStorage.removeItem('clay-settings');
+    else localStorage.setItem('clay-settings', echt);
+  } catch (e) { meldeFehler('Konfigseite zuruecklegen', e); }
+  var teile = url ? url.split(encodeURIComponent(JSON.stringify(SEITEN_MARKE))) : [];
+  if (teile.length !== 2) {
+    // Ein anderes Clay, das die Einstellungen anders einsetzt: dann eben
+    // wie bisher - eine Seite mit Sonderzeichen-Fehler ist besser als keine.
+    console.log('Konfigseite: Marke ' + (teile.length - 1) + ' mal gefunden, Clay setzt selbst ein');
+    return getClay().generateUrl();
+  }
+  return teile[0] + encodeURIComponent(jsonFuerSeite(werte)) + teile[1];
+}
+
 // ---------------------------------------------------------------- Ereignisse
 
 Pebble.addEventListener('showConfiguration', function () {
-  Pebble.openURL(getClay().generateUrl());
+  tageUmstellen();
+  // Die Wochenzahlen von heute: seit dem letzten Stand der Uhr koennen Tage
+  // vergangen sein, und eine veraltete Zahl saehe beim Speichern aus wie eine
+  // geaenderte.
+  var items = storedItems();
+  if (items) mergeClaySettings(ankerInDieSeite(items));
+  Pebble.openURL(konfigUrl());
 });
 
 Pebble.addEventListener('webviewclosed', function (e) {
+  tageUmstellen();
   if (!e || !e.response) return;
   // false = Clay soll nichts von sich aus schicken; aus den Feldern wird erst
-  // ein Block gebaut, und der geht als eines hinaus.
-  var dict = getClay().getSettings(e.response, false);
+  // ein Block gebaut, und der geht als eines hinaus. Clay wirft bei einer
+  // Antwort, die kein JSON ist (abgebrochen: "CANCELLED") - dann bleibt alles,
+  // wie es war.
+  var dict;
+  try {
+    dict = getClay().getSettings(e.response, false);
+  } catch (err) {
+    meldeFehler('Antwort der Konfigseite', err);
+    return;
+  }
   var plan = buildPlan(dict);
   var fx = readFx(dict);
   try {
@@ -551,6 +739,7 @@ Pebble.addEventListener('webviewclosed', function (e) {
 });
 
 Pebble.addEventListener('appmessage', function (e) {
+  tageUmstellen();
   var p = e.payload;
   // Die Uhr sagt beim Start, in welcher Sprache sie beschriftet ist, und
   // fragt zugleich nach dem Plan.
@@ -598,5 +787,6 @@ Pebble.addEventListener('appmessage', function (e) {
 });
 
 Pebble.addEventListener('ready', function () {
+  tageUmstellen();
   console.log('SupCycle bereit');
 });
