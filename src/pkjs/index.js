@@ -35,7 +35,9 @@ var SLOT_UNUSED = 0, SLOT_USED = 1;
 
 // --- Timeline ---
 // Wie in Drinktervall: zuerst die Rebble-REST-Schnittstelle mit dem Token der
-// Pebble-App, ohne Token die lokale Pebble.insertTimelinePin.
+// Pebble-App, ohne Token die lokale Pebble.insertTimelinePin. SCHEITERT REST
+// (401, kein Netz), geht derselbe Pin lokal hinaus (Audit M5) - bis 0.15.0
+// fehlte er dann ganz. Unter Boulder faengt die Telefon-App REST ohnehin ab.
 var API_URL = 'https://timeline-api.rebble.io/v1/user/pins/';
 var PIN_COLOR = '#005555';                 // wie die Seitenleiste der App
 var PIN_STORE = 'supcycle_pins_v1';        // id -> { sig, sentAt }
@@ -515,25 +517,38 @@ function buildPin(id, item, ymd, taken, texts) {
   };
 }
 
-function insertViaRest(pin, token, cb) {
+// Ein Auftrag ist { pin, sig } zum Setzen oder { id, weg: true } zum
+// Entfernen eines Pins, der nicht mehr ansteht.
+function auftragId(a) { return a.weg ? a.id : a.pin.id; }
+
+function viaRest(a, token, cb) {
   var xhr = new XMLHttpRequest();
   xhr.onload = function () { cb(this.status >= 200 && this.status < 300, 'REST ' + this.status); };
   xhr.onerror = function () { cb(false, 'REST Netzwerkfehler'); };
-  xhr.open('PUT', API_URL + pin.id);
+  xhr.open(a.weg ? 'DELETE' : 'PUT', API_URL + auftragId(a));
   xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.setRequestHeader('X-User-Token', '' + token);
-  xhr.send(JSON.stringify(pin));
+  xhr.send(a.weg ? null : JSON.stringify(a.pin));
 }
 
-function insertViaLocal(pin, cb) {
+function lokalDa(a) {
+  return typeof (a.weg ? Pebble.deleteTimelinePin : Pebble.insertTimelinePin) === 'function';
+}
+
+// Lokal setzen oder entfernen. Mit Rueckrufen (drei Parameter) wird auf sie
+// gewartet, hoechstens 5 s; ohne gilt der Aufruf als erledigt - so bietet es
+// Boulder an (ein Parameter, die Kennung beim Entfernen).
+function viaLocal(a, cb) {
   try {
-    if (Pebble.insertTimelinePin.length >= 3) {
+    var fn = a.weg ? Pebble.deleteTimelinePin : Pebble.insertTimelinePin;
+    var arg = a.weg ? a.id : a.pin;
+    if (fn.length >= 3) {
       var done = false;
       var finish = function (ok) { if (!done) { done = true; cb(ok, 'lokal'); } };
       setTimeout(function () { finish(false); }, 5000);
-      Pebble.insertTimelinePin(pin, function () { finish(true); }, function () { finish(false); });
+      fn(arg, function () { finish(true); }, function () { finish(false); });
     } else {
-      Pebble.insertTimelinePin(pin);
+      fn(arg);
       cb(true, 'lokal');
     }
   } catch (e) {
@@ -542,18 +557,28 @@ function insertViaLocal(pin, cb) {
   }
 }
 
-function sendAll(queue, insert) {
+// REST zuerst; scheitert es, derselbe Auftrag lokal.
+function viaRestMitRueckfall(a, token, cb) {
+  viaRest(a, token, function (ok, info) {
+    if (ok || !lokalDa(a)) { cb(ok, info); return; }
+    viaLocal(a, function (ok2, info2) { cb(ok2, info + ', dann ' + info2); });
+  });
+}
+
+function sendAll(queue, ausfuehren) {
   (function next() {
-    var item = queue.shift();
-    if (!item) { console.log('timeline: fertig'); return; }
-    insert(item.pin, function (ok, info) {
-      console.log('timeline: ' + item.pin.id + ' -> ' + (ok ? 'ok' : 'fehlgeschlagen') +
-                  ' (' + info + ')');
+    var a = queue.shift();
+    if (!a) { console.log('timeline: fertig'); return; }
+    ausfuehren(a, function (ok, info) {
+      console.log('timeline: ' + (a.weg ? 'weg ' : '') + auftragId(a) + ' -> ' +
+                  (ok ? 'ok' : 'fehlgeschlagen') + ' (' + info + ')');
       // Pro Pin sichern: pkjs wird mit der App beendet, ein Sammelspeichern am
-      // Ende ginge dabei verloren.
+      // Ende ginge dabei verloren. Ein nicht entfernter bleibt vermerkt und
+      // wird beim naechsten Mal wieder versucht.
       if (ok) {
         var st = loadPins();
-        st[item.pin.id] = { sig: item.sig, sentAt: Date.now() };
+        if (a.weg) delete st[a.id];
+        else st[a.pin.id] = { sig: a.sig, sentAt: Date.now() };
         savePins(st);
       }
       next();
@@ -599,20 +624,30 @@ function pushPins(ymd, dueMask, takenMask) {
     if (had && had.sig === sig && now - had.sentAt < RESEND_AFTER_MS) continue;
     queue.push({ pin: buildPin(id, item, ymd, taken, texts), sig: sig });
   }
-  console.log('timeline: ' + queue.length + ' von ' + wanted + ' Pins zu senden');
+  // WAS HEUTE NICHT MEHR ANSTEHT, GEHT AUS DER TIMELINE (Audit M4): ein
+  // entferntes, verschobenes oder in die Pause gegangenes Praeparat stand bis
+  // 0.15.0 als Pin stehen - samt Aufforderung, es zu nehmen.
+  var heute = 'supcycle-' + dayKeyOf(ymd) + '-';
+  Object.keys(store).forEach(function (id) {
+    if (id.indexOf(heute) !== 0) return;
+    var i = parseInt(id.slice(heute.length), 10);
+    if (!(i >= 0 && i < SLOTS)) return;
+    if ((dueMask & (1 << i)) && plan[i] && plan[i].name) return;
+    queue.push({ id: id, weg: true });
+  });
+  console.log('timeline: ' + queue.length + ' Auftraege, ' + wanted + ' Pins stehen an');
   if (queue.length === 0) return;
 
   var useLocal = function (reason) {
-    if (typeof Pebble.insertTimelinePin === 'function') {
-      console.log('timeline: ' + reason + ', nutze lokale API');
-      sendAll(queue, insertViaLocal);
-    } else {
-      console.log('timeline: ' + reason + ', keine lokale API - Pins uebersprungen');
-    }
+    console.log('timeline: ' + reason + ', nutze lokale API');
+    sendAll(queue, function (a, cb) {
+      if (lokalDa(a)) viaLocal(a, cb);
+      else cb(false, 'keine lokale API');
+    });
   };
   if (typeof Pebble.getTimelineToken !== 'function') { useLocal('kein getTimelineToken'); return; }
   Pebble.getTimelineToken(function (token) {
-    sendAll(queue, function (pin, cb) { insertViaRest(pin, token, cb); });
+    sendAll(queue, function (a, cb) { viaRestMitRueckfall(a, token, cb); });
   }, function (error) {
     useLocal('kein Token (' + error + ')');
   });

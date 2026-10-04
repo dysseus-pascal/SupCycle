@@ -43,14 +43,17 @@ function world(store, opts) {
   opts = opts || {};
   const pins = [];
   const logs = [];
+  const lokal = [];   // was ueber Pebble.insertTimelinePin/deleteTimelinePin ging
 
+  // opts.restStatus: was die REST-Schnittstelle antwortet (Voreinstellung 200).
   function XHR() { this.status = 200; }
   XHR.prototype.open = function (m, u) { this._m = m; this._u = u; };
   XHR.prototype.setRequestHeader = function () {};
   XHR.prototype.send = function (body) {
     const self = this;
-    pins.push({ method: this._m, id: this._u.split('/').pop(), body: JSON.parse(body) });
-    setTimeout(function () { self.status = 200; self.onload && self.onload.call(self); }, 0);
+    pins.push({ method: this._m, id: this._u.split('/').pop(), body: body ? JSON.parse(body) : null });
+    const status = opts.restStatus || 200;
+    setTimeout(function () { self.status = status; self.onload && self.onload.call(self); }, 0);
   };
 
   function FakeClay(config) {
@@ -78,6 +81,9 @@ function world(store, opts) {
       openURL: () => {},
       getTimelineToken: opts.noToken ? undefined
         : (ok) => setTimeout(() => ok('TESTTOKEN'), 0),
+      // Wie Boulder (libpebble3 startup.js): ein Parameter, ohne Rueckrufe.
+      insertTimelinePin: opts.lokal ? (pin) => { lokal.push({ was: 'insert', id: pin.id, pin: pin }); } : undefined,
+      deleteTimelinePin: opts.lokal ? (id) => { lokal.push({ was: 'delete', id: id }); } : undefined,
     },
     __ev: {},
   };
@@ -91,7 +97,7 @@ function world(store, opts) {
   vm.runInContext(fs.readFileSync(SRC, 'utf8'), sandbox, { filename: SRC });
 
   return {
-    store, pins, logs,
+    store, pins, logs, lokal,
     fire: (ev, arg) => (sandbox.__ev[ev] || []).forEach((fn) => fn(arg)),
     // Die gebaute Bytefolge, so wie index.js sie abgelegt hat. Ohne diesen
     // Zugriff liesse sich das Blockformat nur ueber die Pins pruefen - und die
@@ -337,6 +343,62 @@ async function main() {
     check('kein Absturz, und es steht im Log',
           w.logs.some((l) => l.indexOf('getTimelineToken') >= 0 || l.indexOf('lokale API') >= 0),
           w.logs.join(' | '));
+  }
+
+  console.log('\nNicht mehr faellig: Pin weg (M4)');
+  {
+    const w = world(JSON.parse(JSON.stringify(saved)));
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x03, TAKEN: 0 } });
+    await wait(SETTLE);
+    check('zwei faellig: zwei PUT', w.pins.length === 2 && w.pins.every((p) => p.method === 'PUT'),
+          JSON.stringify(w.pins.map((p) => p.method + ' ' + p.id)));
+    // Kreatin (Platz 2) steht nicht mehr an - etwa weil der Plan es so sagt.
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x01, TAKEN: 0 } });
+    await wait(SETTLE);
+    const weg = w.pins.slice(2);
+    check('danach nur eins: genau ein DELETE auf supcycle-<tag>-1',
+          weg.length === 1 && weg[0].method === 'DELETE' && weg[0].id === 'supcycle-' + DAY + '-1',
+          JSON.stringify(weg.map((p) => p.method + ' ' + p.id)));
+    check('und er ist aus dem Speicher', !JSON.parse(w.store.supcycle_pins_v1)['supcycle-' + DAY + '-1'],
+          w.store.supcycle_pins_v1);
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x01, TAKEN: 0 } });
+    await wait(SETTLE);
+    check('ein drittes Mal: nichts mehr zu tun', w.pins.length === 3, w.pins.length);
+    // Der neue Tag loescht die Pins von gestern nicht - die liegen zurueck.
+    w.fire('appmessage', { payload: { TODAY: tomorrowNumber(), DUE: 0x00, TAKEN: 0 } });
+    await wait(SETTLE);
+    check('morgen nichts faellig: die Pins von heute bleiben', w.pins.length === 3, w.pins.length);
+  }
+  {
+    // Ohne Token: lokal entfernt, mit der Kennung.
+    const w = world(JSON.parse(JSON.stringify(saved)), { noToken: true, lokal: true });
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x03, TAKEN: 0 } });
+    await wait(SETTLE);
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x02, TAKEN: 0 } });
+    await wait(SETTLE);
+    const weg = w.lokal.filter((x) => x.was === 'delete');
+    check('ohne Token: lokal entfernt, mit der Kennung', weg.length === 1 && weg[0].id === 'supcycle-' + DAY + '-0',
+          JSON.stringify(w.lokal.map((x) => x.was + ' ' + x.id)));
+  }
+
+  console.log('\nREST scheitert: lokal (M5)');
+  {
+    const w = world(JSON.parse(JSON.stringify(saved)), { restStatus: 401, lokal: true });
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x03, TAKEN: 0 } });
+    await wait(SETTLE);
+    check('REST zuerst', w.pins.length === 2 && w.pins.every((p) => p.method === 'PUT'), w.pins.length);
+    const ein = w.lokal.filter((x) => x.was === 'insert').map((x) => x.id).sort();
+    check('beide Pins dann lokal', JSON.stringify(ein) === JSON.stringify(['supcycle-' + DAY + '-0', 'supcycle-' + DAY + '-1']),
+          JSON.stringify(ein));
+    check('lokal gesetzt gilt als gesendet', Object.keys(JSON.parse(w.store.supcycle_pins_v1)).length === 2,
+          w.store.supcycle_pins_v1);
+    check('und es steht im Log', w.logs.some((l) => l.indexOf('REST 401, dann lokal') >= 0), w.logs.join(' | '));
+  }
+  {
+    const w = world(JSON.parse(JSON.stringify(saved)), { lokal: true });
+    w.fire('appmessage', { payload: { TODAY: DAY, DUE: 0x03, TAKEN: 0 } });
+    await wait(SETTLE);
+    check('REST klappt: nichts lokal', w.lokal.length === 0 && w.pins.length === 2, JSON.stringify(w.lokal));
   }
 
   console.log('\nFehler: ' + fails);
