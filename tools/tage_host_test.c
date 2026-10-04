@@ -186,6 +186,17 @@ static void umstellung_um(time_t jetzt, const char *wann) {
   pruefe(was, anker_im_persist(0) == heute_alt + versatz && anker_im_persist(1) == heute_alt - 7 + versatz);
   snprintf(was, sizeof(was), "%s: Fassung im Persist", wann);
   pruefe(was, persist_read_int(FACH_TAGE) == 2);
+  // Boulder nimmt Haken weiter zurueck: der Befehl traegt Datum und
+  // Hakenzeit, keine Tagesnummer (eine alte Uhr schrieb keine Zeit: 0).
+  {
+    uint8_t null_zeiten[SC_TAKEN_AT_BYTES] = { 0 };
+    alte_uhr(jetzt, heute_alt, 0x1);
+    plan_init();
+    snprintf(was, sizeof(was), "%s: Boulder nimmt den Haken nach der Umstellung zurueck", wann);
+    pruefe(was, plan_untake(0x1, null_zeiten, sizeof(null_zeiten)) && !plan_taken(0));
+    alte_uhr(jetzt, heute_alt, 0x1);
+    plan_init();
+  }
   // Ein zweiter Start verschiebt nichts mehr.
   plan_init();
   snprintf(was, sizeof(was), "%s: zweiter Start verschiebt nicht noch einmal", wann);
