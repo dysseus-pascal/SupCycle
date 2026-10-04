@@ -38,13 +38,26 @@ static GBitmap *s_icon_later;
 static AppTimer *s_vibe;
 static int s_vibes_left;
 static int s_minute;          // Uhrzeit der Erinnerung, -1 = "was offen ist"
+// Der Kalendertag der Runde (remind_runden_tag): heute, oder gestern fuer
+// einen Aufschub, der ueber Mitternacht ging. Beim Erscheinen festgelegt -
+// eine Erinnerung von 23:50, die bis nach Mitternacht offen steht, bleibt
+// die Runde von gestern.
+static int32_t s_tag;
 static bool s_playing;
 static bool s_geht;           // abgehakt: wartet nur noch auf das Telefon
 
-// Gehört dieses Präparat zu dieser Erinnerung? Bei -1 (nach einem Aufschub
-// oder ohne Uhrzeit) zählt alles, was heute noch offen ist.
+// Ist die Runde von heute? Nur dann gibt es Haken zu ihr (plan.h).
+static bool prv_heute(void) {
+  return s_tag == plan_today();
+}
+
+// Gehört dieses Präparat zu dieser Erinnerung? Bei -1 (ohne Uhrzeit) zählt
+// alles, was heute noch offen ist. Fuer die Runde von gestern zaehlt, was
+// gestern anstand - ihre Haken sind um Mitternacht weggefallen, und offen
+// ist sie, sonst klopfte ihr Aufschub nicht (remind_schedule).
 static bool prv_in_batch(int i) {
-  if (!plan_due_today(i) || plan_taken(i)) return false;
+  if (!plan_due_on(i, s_tag)) return false;
+  if (prv_heute() && plan_taken(i)) return false;
   if (s_minute < 0) return true;
   const PlanItem *it = plan_item(i);
   return it && (it->hour * 60 + it->minute) == s_minute;
@@ -160,14 +173,22 @@ static void prv_fx_done(void) {
 static void prv_take(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
   prv_stop_vibes();
-  for (int i = 0; i < SC_MAX_ITEMS; i++) {
-    if (prv_in_batch(i)) plan_set_taken(i, true);
+  const bool heute = prv_heute();
+  if (heute) {
+    for (int i = 0; i < SC_MAX_ITEMS; i++) {
+      if (prv_in_batch(i)) plan_set_taken(i, true);
+    }
+  } else {
+    // DIE RUNDE VON GESTERN, nach Mitternacht genommen. Ein Haken hiesse
+    // hier "heute genommen" - und die Runde gleicher Uhrzeit von heute
+    // klopfte am Abend nicht mehr. Lieber fehlt der Vermerk fuer gestern.
+    APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d von gestern genommen - kein Haken fuer heute", s_minute);
   }
   // Wecker neu stellen: die eben abgehakten sollen heute nicht nochmal
-  // klopfen - auch nicht ueber einen offenen Aufschub.
-  remind_snooze_clear();
+  // klopfen - auch nicht ueber einen offenen Aufschub dieser Runde.
+  remind_snooze_clear(s_minute);
   remind_schedule();
-  phone_send_today();     // Pins als erledigt markieren
+  if (heute) phone_send_today();     // Pins als erledigt markieren
   s_geht = true;
 
   // Abgeschaltete Animation heisst NICHT, dass das Fenster stehen bleibt:
@@ -193,7 +214,7 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
 static void prv_dismiss(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
   prv_stop_vibes();
-  remind_snooze_clear();
+  remind_snooze_clear(s_minute);
   remind_schedule();
   prv_close();
 }
@@ -206,7 +227,7 @@ static void prv_later(ClickRecognizerRef recognizer, void *context) {
     return;
   }
   prv_stop_vibes();
-  remind_snooze(s_minute);
+  remind_snooze(s_minute, s_tag);
   prv_close();
 }
 
@@ -267,6 +288,7 @@ static void prv_unload(Window *window) {
 bool reminder_window_push(int minute) {
   if (s_window) return true;
   s_minute = minute;
+  s_tag = remind_runden_tag(minute);
   if (prv_batch_count() == 0) return false;  // nichts offen: gar nicht erst zeigen
 
   s_playing = false;

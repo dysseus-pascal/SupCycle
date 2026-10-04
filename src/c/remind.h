@@ -62,19 +62,30 @@ int remind_launch_minute(void);
 //
 // HOECHSTENS SC_SNOOZE_MAX MAL. Wer dreimal "spaeter" sagt, meint "heute
 // nicht"; danach verfaellt die Runde wie beim Wegdruecken.
+//
+// UEBER MITTERNACHT bleibt es die Runde des Vortags: 23:50 aufgeschoben
+// klopft um 00:05, zaehlt weiter und gilt dem Vortag. Abgehakt wird sie dann
+// nicht mehr - Haken gibt es nur fuer heute (plan.h), und der Haken von heute
+// gehoert der Runde 23:50 von heute.
 
 #define SC_SNOOZE_MIN 15
 #define SC_SNOOZE_MAX 3
 
-// Die Runde zu dieser Uhrzeit in SC_SNOOZE_MIN Minuten nochmal. Zaehlt mit;
-// ein Aufschub zu einer anderen Runde ersetzt den alten und zaehlt von vorn.
-// Der Zaehler ueberlebt das Klopfen des Aufschubs - sonst waere jeder
-// Aufschub der erste. Von vorn zaehlt erst eine andere Runde oder ein neuer
-// Tag; geloescht wird er beim Abhaken und Wegdruecken.
-void remind_snooze(int minute);
-// Darf diese Runde noch aufgeschoben werden?
+// Der Kalendertag der Runde zu dieser Uhrzeit, an die jetzt erinnert wird:
+// heute - oder gestern, solange ein Aufschub die Runde von gestern ueber
+// Mitternacht traegt und ihre Uhrzeit heute noch nicht wieder da ist.
+int32_t remind_runden_tag(int minute);
+
+// Die Runde zu dieser Uhrzeit vom Kalendertag `tag` in SC_SNOOZE_MIN Minuten
+// nochmal. Zaehlt mit; ein Aufschub zu einer anderen Runde ersetzt den alten
+// und zaehlt von vorn. Der Zaehler ueberlebt das Klopfen des Aufschubs -
+// sonst waere jeder Aufschub der erste. Von vorn zaehlt erst eine andere
+// Runde oder ein neuer Tag; geloescht wird er beim Abhaken und Wegdruecken.
+void remind_snooze(int minute, int32_t tag);
+// Darf diese Runde (vom remind_runden_tag) noch aufgeschoben werden?
 bool remind_snooze_left(int minute);
-// Wie oft diese Runde schon aufgeschoben wurde.
+// Wie oft diese Runde (vom remind_runden_tag) schon aufgeschoben wurde.
 int remind_snooze_count(int minute);
-// Den Aufschub vergessen - nach dem Nehmen oder dem Wegdruecken.
-void remind_snooze_clear(void);
+// Den Aufschub dieser Runde vergessen - nach dem Nehmen oder dem
+// Wegdruecken. Der Aufschub einer anderen Runde bleibt; -1 vergisst jeden.
+void remind_snooze_clear(int minute);

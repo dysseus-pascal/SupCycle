@@ -14,6 +14,9 @@
 //     hat, hoechstens 5 s spaeter - ohne Verbindung sofort.
 //   - HOECHSTENS DREI AUFSCHUEBE, ueber jeden Start durch den Aufschub
 //     hinweg und auch, wenn er bei offener App klopft.
+//   - DER AUFSCHUB HAELT: von Hand kurz vor ihm geoeffnet, ueber Mitternacht
+//     (dann gilt er der Runde von gestern und hakt die von heute nicht ab),
+//     und wenn dazwischen eine andere Runde abgehakt oder weggedrueckt wird.
 //
 // Exitcode 0 = alles wie zugesagt.
 #define _DEFAULT_SOURCE
@@ -314,12 +317,143 @@ static void abschnitt_aufschub_offen(void) {
   pruefe("um 08:30 ist es der zweite", s_lief == 1 && vermerk("Aufschub 2 von 3"));
 }
 
+// --- Der Aufschub haelt ---
+// Einen Platz des Plans im Persist ersetzen: alle `alle` Tage ab `anker`.
+static void platz_setzen(int platz, const char *name, int h, int mi, int alle, int32_t anker) {
+  uint8_t b[SC_MAX_ITEMS * SC_ITEM_BYTES];
+  persist_read_data(FACH_PLAN, b, sizeof(b));
+  uint8_t *p = b + platz * SC_ITEM_BYTES;
+  memset(p, 0, SC_ITEM_BYTES);
+  memcpy(p, name, strlen(name));
+  p[16] = (uint8_t)h; p[17] = (uint8_t)mi; p[18] = 1; p[19] = (uint8_t)alle;
+  for (int k = 0; k < 4; k++) p[22 + k] = (uint8_t)((uint32_t)anker >> (8 * k));
+  persist_write_data(FACH_PLAN, b, sizeof(b));
+}
+static const AttrappeWecker *aufschub_fuer(int minute) {
+  for (int i = 0; i < attrappe_wecker_zahl(); i++) {
+    if (attrappe_wecker(i)->cookie == COOKIE_AUFSCHUB + minute) return attrappe_wecker(i);
+  }
+  return NULL;
+}
+static void genommen_druecken(void) {
+  s_lief++;
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+  attrappe_taste(BUTTON_ID_SELECT);
+  // Ohne Antwort des Telefons geht die App nach 5 s zu (M3) - erst dann ist
+  // der naechste Start ein frischer.
+  attrappe_zeitgeber_vorspulen(6000);
+  pruefe("  nach dem Abhaken ist die App zu", attrappe_fenster_zahl() == 0);
+}
+static void zurueck_druecken(void) {
+  s_lief++;
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+  attrappe_taste(BUTTON_ID_BACK);
+}
+
+// Von Hand geoeffnet um 08:14:45, der Aufschub von 08:15 klopft bei offener App.
+static void kurz_davor_offen(void) {
+  s_lief++;
+  attrappe_wecker_feuert();
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+}
+static void abschnitt_kurz_davor(void) {
+  printf("\nDer Aufschub haelt: App kurz vor ihm von Hand geoeffnet\n");
+  uhr(datum_tag(2026, 7, 14), false);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0);
+  starten(APP_LAUNCH_WAKEUP, 480, spaeter_druecken);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 14) + 45;
+  starten(APP_LAUNCH_USER, 0, kurz_davor_offen);
+  pruefe("der naechste Wecker ist der Aufschub, nicht vor 08:15 und nicht nach 08:15:16",
+         stub_jetzt >= ortszeit(2026, 7, 14, 8, 15) && stub_jetzt <= ortszeit(2026, 7, 14, 8, 15) + 16);
+  pruefe("er zeigt die Runde 08:00, Aufschub 1 von 3",
+         strstr(s_gesehen, "08:00") && strstr(s_gesehen, "Zink") && vermerk("Aufschub 1 von 3"));
+}
+
+static void abschnitt_mitternacht(void) {
+  printf("\nDer Aufschub haelt: ueber Mitternacht\n");
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, false);
+  platz_setzen(3, "Mg", 23, 50, 1, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 23, 50);
+  starten(APP_LAUNCH_WAKEUP, 1430, spaeter_druecken);
+  pruefe("23:50: die Erinnerung kommt", s_lief == 1 && strstr(s_gesehen, "23:50") && strstr(s_gesehen, "Mg"));
+  const AttrappeWecker *a = aufschub_fuer(1430);
+  pruefe("  \"spaeter\": um 00:05", a && ist_um(a->zeit, 2026, 7, 15, 0, 5));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, spaeter_druecken);
+  pruefe("00:05: die Runde 23:50 kommt wieder, Aufschub 1 von 3",
+         s_lief == 1 && strstr(s_gesehen, "23:50") && strstr(s_gesehen, "Mg") && vermerk("Aufschub 1 von 3"));
+  pruefe("  und nur sie", !strstr(s_gesehen, "Zink") && !strstr(s_gesehen, "Maca"));
+  a = aufschub_fuer(1430);
+  pruefe("  \"spaeter\": um 00:20", a && ist_um(a->zeit, 2026, 7, 15, 0, 20));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, genommen_druecken);
+  pruefe("00:20: Aufschub 2 von 3, genommen", s_lief == 1 && vermerk("Aufschub 2 von 3"));
+  pruefe("  hakt die Runde 23:50 von HEUTE nicht ab", !plan_taken(3));
+  pruefe("  sie klopft heute um 23:50", wecker_um(1430, 2026, 7, 15, 23, 50));
+  pruefe("  und der Aufschub ist vorbei", aufschub_fuer(1430) == NULL && remind_snooze_count(1430) == 0);
+}
+
+// Alle 2 Tage, gestern dran, heute nicht: der Aufschub von gestern zeigt sie.
+static void abschnitt_mitternacht_zweitage(void) {
+  printf("\nDer Aufschub haelt: ueber Mitternacht, heute nicht dran\n");
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, false);
+  platz_setzen(3, "Mg", 23, 50, 2, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 23, 50);
+  starten(APP_LAUNCH_WAKEUP, 1430, spaeter_druecken);
+  const AttrappeWecker *a = aufschub_fuer(1430);
+  pruefe("23:50 aufgeschoben: um 00:05", a && ist_um(a->zeit, 2026, 7, 15, 0, 5));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, zurueck_druecken);
+  pruefe("00:05: die Runde von gestern kommt, obwohl Mg heute nicht dran ist",
+         s_lief == 1 && strstr(s_gesehen, "Mg") && vermerk("Aufschub 1 von 3"));
+  pruefe("  weggedrueckt: kein Aufschub mehr", aufschub_fuer(1430) == NULL && remind_snooze_count(1430) == 0);
+}
+
+// Zink 08:00 aufgeschoben, Maca 08:10 dazwischen genommen oder weggedrueckt.
+static void andere_runde(void (*taste)(void), const char *wie) {
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, false);
+  platz_setzen(2, "Maca", 8, 10, 1, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0);
+  starten(APP_LAUNCH_WAKEUP, 480, spaeter_druecken);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 10);
+  starten(APP_LAUNCH_WAKEUP, 490, taste);
+  char was[96];
+  snprintf(was, sizeof(was), "08:10: Maca %s", wie);
+  pruefe(was, s_lief == 1 && strstr(s_gesehen, "Maca") && !strstr(s_gesehen, "Zink"));
+  const AttrappeWecker *a = aufschub_fuer(480);
+  pruefe("  der Aufschub von 08:00 steht weiter auf 08:15", a && ist_um(a->zeit, 2026, 7, 14, 8, 15));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, spaeter_druecken);
+  pruefe("  08:15: Zink und D3, Aufschub 1 von 3",
+         s_lief == 1 && strstr(s_gesehen, "Zink") && strstr(s_gesehen, "D3") && vermerk("Aufschub 1 von 3"));
+}
+static void abschnitt_andere_runde_genommen(void) {
+  printf("\nDer Aufschub haelt: eine andere Runde dazwischen genommen\n");
+  andere_runde(genommen_druecken, "genommen");
+  pruefe("  Maca bleibt genommen, Zink offen", plan_taken(2) && !plan_taken(0));
+}
+static void abschnitt_andere_runde_weg(void) {
+  printf("\nDer Aufschub haelt: eine andere Runde dazwischen weggedrueckt\n");
+  andere_runde(zurueck_druecken, "weggedrueckt");
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
   abschnitt_neuplanen, abschnitt_offen, abschnitt_genommen_ohne_fx, abschnitt_genommen_mit_fx,
   abschnitt_genommen_frist, abschnitt_genommen_offline, abschnitt_kur,
-  abschnitt_aufschub_start, abschnitt_aufschub_offen,
+  abschnitt_aufschub_start, abschnitt_aufschub_offen, abschnitt_kurz_davor, abschnitt_mitternacht,
+  abschnitt_mitternacht_zweitage,  abschnitt_andere_runde_genommen, abschnitt_andere_runde_weg,
 };
 
 int main(void) {

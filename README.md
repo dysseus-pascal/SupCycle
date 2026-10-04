@@ -332,8 +332,8 @@ node tools/strings_check.js src/c/strings_table.h
 sh tools/plan_host_test.sh      # Hakenzeiten, Zurücknehmen, Tageswechsel, Persist-Fächer (Rechner-C, pebble.h als Attrappe)
 sh tools/phone_host_test.sh     # Startanfrage, Nachfassen, Nachholen, Frage nach der Zeit, Platz im Postausgang, Warten auf das Telefon
 sh tools/tage_host_test.sh      # Kalendertage, Umstellung von 0.15.0, gespeicherter Plan, Kur, Zyklus-Selbsttest (Zürich, London, New York, UTC)
-sh tools/remind_host_test.sh    # Weckplan: 60 Tage voraus, Wecker zum Neuplanen, Umstellungstage (drei Zonen)
-sh tools/app_host_test.sh       # die ganze App: Weckstarts, Wecker bei offener App, Genommen und Telefon, Zyklusseite
+sh tools/remind_host_test.sh    # Weckplan: 60 Tage voraus, Wecker zum Neuplanen, Umstellungstage, Aufschub (drei Zonen)
+sh tools/app_host_test.sh       # die ganze App: Weckstarts, Wecker bei offener App, Genommen und Telefon, Zyklusseite, Aufschub (drei Zonen)
 node tools/pkjs_start_test.js   # Startzweige der Telefonseite, Antwort auf die Frage nach der Zeit
 node tools/pkjs_tage_test.js    # Kalendertage und Anker auf der Telefonseite, Anker durch die Konfigseite
 node tools/pkjs_clay_test.js    # Namen mit $ und < durch das echte Clay (npm install)
@@ -441,6 +441,23 @@ Aufschub war wieder der erste.
 stand er nur als Wecker — und weil die App bei jedem Start alle Wecker neu
 stellt, fiel er weg, sobald irgendein anderer Wecker die App dazwischen
 öffnete. Ein „später" am Morgen kam so manchmal nie wieder.
+
+**Eine andere Runde lässt ihn stehen.** Abhaken oder Wegdrücken der Runde
+08:10 löscht den Aufschub der Runde 08:00 nicht; bis 0.15.0 tat es das, und
+08:00 kam nie wieder. Es gibt einen Aufschub, nicht mehrere: ein „später" zu
+einer anderen Runde ersetzt ihn.
+
+**Kurz davor geöffnet, klopft er trotzdem.** Jeder Start stellt alle Wecker
+neu. Lag der Aufschub (oder eine Runde) weniger als 30 s voraus, fiel er bis
+0.15.0 dabei weg — die App um 08:14:45 geöffnet, und der Aufschub von 08:15
+kam nie. Jetzt klopft er höchstens 31 s nach dem Öffnen.
+
+**Über Mitternacht bleibt es die Runde des Vortags.** 23:50 aufgeschoben
+klopft um 00:05, zählt weiter und zeigt, was am Vortag anstand. Bis 0.15.0
+klopfte ein Aufschub über Mitternacht nie. „Genommen" hakt dann nichts ab:
+die Haken gelten für heute, und der von heute gehört der Runde 23:50 von
+heute — sie soll am Abend wieder klopfen. Wurde die Runde vor Mitternacht auf
+dem Heute-Schirm abgehakt, ist ihr Aufschub vorbei.
 
 **Wegdrücken schliesst die App.** Zurück auf der Erinnerung heisst „nicht jetzt
 und nicht nachfragen": kein Aufschub, keine weitere Erinnerung zu dieser Runde,

@@ -6,9 +6,11 @@
 #   sh tools/app_host_test.sh
 #
 # Die Nachrichtenschluessel entstehen wie in phone_host_test.sh aus
-# package.json. main() aus supcycle.c heisst hier supcycle_main.
+# package.json. main() aus supcycle.c heisst hier supcycle_main. Laeuft in
+# Zuerich, London und New York - Runden ueber Mitternacht haengen am Datum
+# der Ortszeit.
 #
-# Exitcode 0 = alles bestanden.
+# Exitcode 0 = in jeder Zone alles bestanden.
 DIR=$(cd "$(dirname "$0")/.." && pwd)
 OUT=$(mktemp -d)
 trap 'rm -rf "$OUT"' EXIT
@@ -24,4 +26,8 @@ done
 cc $FLAGS "$DIR/tools/app_host_test.c" "$OUT/supcycle.o" $QUELLEN \
    "$DIR/tools/host/attrappe.c" "$DIR/tools/host/attrappe_persist.c" "$DIR/tools/host/attrappe_ui.c" \
    -o "$OUT/app_test" || exit 1
-TZ=Europe/Zurich "$OUT/app_test"
+FEHLER=0
+for ZONE in Europe/Zurich Europe/London America/New_York; do
+  TZ=$ZONE "$OUT/app_test" || FEHLER=1
+done
+exit $FEHLER

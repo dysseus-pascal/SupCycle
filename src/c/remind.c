@@ -29,30 +29,85 @@ static time_t prv_snooze_at(void) {
 static int prv_snooze_minute(void) {
   return persist_exists(PERSIST_SNOOZE_MINUTE) ? persist_read_int(PERSIST_SNOOZE_MINUTE) : -1;
 }
-int remind_snooze_count(int minute) {
+static bool prv_snooze_tag(int32_t *tag) {
+  if (!persist_exists(PERSIST_SNOOZE_TAG)) return false;
+  *tag = (int32_t)persist_read_int(PERSIST_SNOOZE_TAG);
+  return true;
+}
+
+// Wie oft die Runde `minute` vom Kalendertag `tag` schon aufgeschoben wurde.
+static int prv_zahl(int minute, int32_t tag) {
   if (minute < 0 || prv_snooze_minute() != minute) return 0;
   // Ohne Tag (Aufschub aus 0.15.0 und frueher) zaehlt er nicht - lieber
   // einmal zu viel aufschieben als eine Runde vorzeitig verfallen lassen.
-  if (!persist_exists(PERSIST_SNOOZE_TAG) || persist_read_int(PERSIST_SNOOZE_TAG) != plan_today()) return 0;
+  int32_t gemerkt;
+  if (!prv_snooze_tag(&gemerkt) || gemerkt != tag) return 0;
   return persist_exists(PERSIST_SNOOZE_COUNT) ? persist_read_int(PERSIST_SNOOZE_COUNT) : 0;
+}
+
+int32_t remind_runden_tag(int minute) {
+  const int32_t heute = plan_today();
+  // Gestern ist es nur, wenn ein Aufschub die Runde ueber Mitternacht trug
+  // und ihre Uhrzeit heute noch nicht wieder da ist. NICHT allein nach der
+  // Uhrzeit: nach einer Reise nach Westen klopft ein Wecker eine Stunde vor
+  // seiner Runde, und die ist trotzdem die von heute.
+  int32_t gemerkt;
+  if (minute >= 0 && prv_snooze_minute() == minute && prv_snooze_tag(&gemerkt) &&
+      gemerkt == heute - 1 && kalender_zeit_am(heute, minute) > time(NULL)) {
+    return gemerkt;
+  }
+  return heute;
+}
+
+int remind_snooze_count(int minute) {
+  return prv_zahl(minute, remind_runden_tag(minute));
 }
 bool remind_snooze_left(int minute) {
   return remind_snooze_count(minute) < SC_SNOOZE_MAX;
 }
-void remind_snooze_clear(void) {
+void remind_snooze_clear(int minute) {
+  // NUR DER AUFSCHUB DIESER RUNDE. Bis 0.15.0 loeschte jedes Abhaken und
+  // Wegdruecken den einen gemerkten Aufschub, gleich welcher Runde er galt:
+  // Morgenrunde 08:00 aufgeschoben, um 08:10 eine andere Runde abgehakt -
+  // und 08:00 kam nie wieder.
+  const int gemerkt = prv_snooze_minute();
+  if (minute >= 0 && gemerkt >= 0 && gemerkt != minute) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub der Minute %d bleibt", gemerkt);
+    return;
+  }
   persist_delete(PERSIST_SNOOZE_AT);
   persist_delete(PERSIST_SNOOZE_MINUTE);
   persist_delete(PERSIST_SNOOZE_COUNT);
   persist_delete(PERSIST_SNOOZE_TAG);
 }
-void remind_snooze(int minute) {
-  const int count = remind_snooze_count(minute) + 1;
+void remind_snooze(int minute, int32_t tag) {
+  const int count = prv_zahl(minute, tag) + 1;
   persist_write_int(PERSIST_SNOOZE_AT, (int)(time(NULL) + SC_SNOOZE_MIN * 60));
   persist_write_int(PERSIST_SNOOZE_MINUTE, minute);
   persist_write_int(PERSIST_SNOOZE_COUNT, count);
-  persist_write_int(PERSIST_SNOOZE_TAG, (int)plan_today());
-  APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub %d fuer Minute %d", count, minute);
+  persist_write_int(PERSIST_SNOOZE_TAG, (int)tag);
+  APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub %d fuer Minute %d vom Tag %d", count, minute, (int)tag);
   remind_schedule();
+}
+
+// Der Tag der Runde, der der gemerkte Aufschub gilt. Ohne gemerkten Tag
+// (0.15.0) der letzte Tag, an dem ihre Uhrzeit vor dem Klopfen schon da war.
+static int32_t prv_snooze_runde(time_t snooze_at, int minute) {
+  int32_t tag;
+  if (prv_snooze_tag(&tag)) return tag;
+  tag = kalender_tag(snooze_at);
+  if (minute >= 0 && kalender_zeit_am(tag, minute) > snooze_at) tag--;
+  return tag;
+}
+
+// Wann ein Wecker fuer `t` zu stellen ist: `t`, aber nicht vor LEAD_S.
+// remind_schedule faengt mit wakeup_cancel_all an - was in den naechsten
+// LEAD_S Sekunden geklopft haette, ist damit abgesagt. Bis 0.15.0 wurde es
+// dann gar nicht mehr gestellt: wer die App um 08:14:45 oeffnete, bekam den
+// Aufschub von 08:15 nie (und um 07:59:45 die Runde von 08:00 nie). Jetzt
+// klopft er eben ein paar Sekunden spaeter.
+static time_t prv_fruehestens(time_t t, time_t now) {
+  return t > now + LEAD_S ? t : now + LEAD_S + 1;
 }
 
 // Wakeups brauchen eine Minute Abstand zueinander. Zwei Praeparate zur selben
@@ -106,21 +161,35 @@ void remind_schedule(void) {
   int n = 0;
 
   // Der offene Aufschub zuerst - aber nur, solange seine Runde noch offen
-  // ist und der Tag derselbe. Ein Aufschub von gestern klopft nicht heute.
+  // ist. Er gilt der Runde von heute oder der von gestern: 23:50
+  // aufgeschoben klopft um 00:05 (bis 0.15.0 nur am selben Tag, und so
+  // klopfte ein Aufschub ueber Mitternacht nie). Aelter wird keiner.
   const time_t snooze_at = prv_snooze_at();
   const int snooze_minute = prv_snooze_minute();
   if (snooze_at > 0) {
-    const bool gilt = snooze_at > now + LEAD_S && snooze_minute >= 0 &&
-        kalender_tag(snooze_at) == kalender_tag(now) &&
-        prv_noch_offen(plan_today(), snooze_minute, true);
+    const int32_t heute = plan_today();
+    const int32_t runde = prv_snooze_runde(snooze_at, snooze_minute);
+    const int32_t klopft = kalender_tag(snooze_at);
+    const bool gestern = runde == heute - 1;
+    // Die Haken von gestern kennt die Uhr nach Mitternacht nicht mehr
+    // (plan.c). Ob die Runde von gestern noch offen ist, steht deshalb schon
+    // vor Mitternacht fest - siehe den letzten Zweig.
+    const bool offen = snooze_minute >= 0 && prv_noch_offen(runde, snooze_minute, !gestern);
+    const bool gilt = snooze_at > now && offen && (runde == heute || gestern) &&
+        (klopft == runde || klopft == runde + 1);
     if (gilt) {
-      if (prv_schedule(snooze_at, COOKIE_SNOOZE + snooze_minute, true)) n++;
+      if (prv_schedule(prv_fruehestens(snooze_at, now), COOKIE_SNOOZE + snooze_minute, true)) n++;
     } else if (snooze_at <= now) {
       // Verstrichen: meist hat er eben geklopft, sonst verpasste ihn die Uhr
       // (aus, Wecker verworfen). Vorbei ist nur der WECKER. Den Zaehler
       // loeschen erst Abhaken und Wegdruecken - bis 0.15.0 fiel er hier mit
       // weg, und jeder Aufschub war wieder der erste: "hoechstens dreimal"
       // griff nie.
+      persist_delete(PERSIST_SNOOZE_AT);
+    } else if (runde == heute && klopft > heute && !offen) {
+      // Heute schon erledigt (etwa auf dem Heute-Schirm), und er klopfte
+      // erst nach Mitternacht: dann wuesste die Uhr nicht mehr, dass die
+      // Runde genommen ist, und erinnerte an Erledigtes. Also jetzt vorbei.
       persist_delete(PERSIST_SNOOZE_AT);
     }
   }
@@ -171,8 +240,8 @@ void remind_schedule(void) {
       if (!prv_noch_offen(the_day, best, day == 0)) continue;
 
       const time_t at = kalender_zeit_am(the_day, best);
-      if (at <= now + LEAD_S) continue;     // heute schon vorbei
-      if (prv_schedule(at, best, true)) n++;
+      if (at <= now) continue;     // heute schon vorbei
+      if (prv_schedule(prv_fruehestens(at, now), best, true)) n++;
     }
   }
 
