@@ -12,6 +12,8 @@
 //     App startet - bis 0.15.0 verpuffte er.
 //   - NACH "GENOMMEN" (M3) geht die App erst zu, wenn das Telefon den Haken
 //     hat, hoechstens 5 s spaeter - ohne Verbindung sofort.
+//   - HOECHSTENS DREI AUFSCHUEBE, ueber jeden Start durch den Aufschub
+//     hinweg und auch, wenn er bei offener App klopft.
 //
 // Exitcode 0 = alles wie zugesagt.
 #define _DEFAULT_SOURCE
@@ -20,6 +22,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include "plan.h"
+#include "remind.h"
 #include "strings.h"
 
 time_t stub_jetzt;
@@ -32,6 +35,7 @@ static void pruefe(const char *was, bool ok) {
 }
 
 #define COOKIE_NEUPLANEN 5000
+#define COOKIE_AUFSCHUB 2000
 #define FACH_PLAN 1
 #define FACH_FX 4
 #define FACH_TAGE 9
@@ -231,11 +235,91 @@ static void abschnitt_kur(void) {
   pruefe("der Starter zaehlt die beendete Kur nicht mit", strstr(attrappe_glance(), "4 von 4") != NULL);
 }
 
+// --- Hoechstens drei Aufschuebe ---
+// Mehrere Starts nacheinander in einem Prozess: Persist und Wecker bleiben
+// dazwischen stehen wie auf der Uhr, Fenster und Postausgang nicht.
+static const AttrappeWecker *aufschub_wecker(void) {
+  for (int i = 0; i < attrappe_wecker_zahl(); i++) {
+    if (attrappe_wecker(i)->cookie == COOKIE_AUFSCHUB + 480) return attrappe_wecker(i);
+  }
+  return NULL;
+}
+static char s_gesehen[512];
+static void spaeter_druecken(void) {
+  s_lief++;
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+  attrappe_taste(BUTTON_ID_DOWN);
+}
+static void starten(AppLaunchReason grund, int32_t cookie, void (*waehrenddessen)(void)) {
+  attrappe_ui_leeren();
+  attrappe_nachrichten_leeren();
+  attrappe_start(grund, cookie);
+  s_lief = 0;
+  s_gesehen[0] = 0;
+  attrappe_app_laeuft = waehrenddessen;
+  supcycle_main();
+}
+// Ein Vermerk unter der Runde: der wievielte Aufschub. NULL = keiner.
+static bool vermerk(const char *soll) {
+  if (!soll) return strstr(s_gesehen, "Aufschub") == NULL;
+  return strstr(s_gesehen, soll) != NULL;
+}
+static void abschnitt_aufschub_start(void) {
+  printf("\nHoechstens drei Aufschuebe: der Aufschub startet die App\n");
+  uhr(datum_tag(2026, 7, 14), false);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0);
+  const char *soll[] = { NULL, "Aufschub 1 von 3", "Aufschub 2 von 3", "Letzter Aufschub" };
+  int32_t cookie = 480;
+  for (int k = 0; k <= SC_SNOOZE_MAX; k++) {
+    char was[96];
+    starten(APP_LAUNCH_WAKEUP, cookie, spaeter_druecken);
+    snprintf(was, sizeof(was), "Start %d: die Erinnerung kommt, %s", k + 1, soll[k] ? soll[k] : "ohne Vermerk");
+    pruefe(was, s_lief == 1 && vermerk(soll[k]));
+    const AttrappeWecker *a = aufschub_wecker();
+    if (k < SC_SNOOZE_MAX) {
+      pruefe("  \"spaeter\": in 15 min nochmal", a && a->zeit == stub_jetzt + 15 * 60);
+      if (!a) return;
+      stub_jetzt = a->zeit;
+      cookie = a->cookie;
+    } else {
+      pruefe("  das vierte \"spaeter\" laesst die Runde verfallen", a == NULL && attrappe_fenster_zahl() == 0);
+    }
+  }
+  pruefe("sie bleibt offen fuer den Heute-Schirm", !plan_taken(0) && !plan_taken(1));
+  pruefe("die naechste Erinnerung 08:00 ist morgen", wecker_um(480, 2026, 7, 15, 8, 0));
+}
+
+static void aufschub_bei_offener_app(void) {
+  s_lief++;
+  attrappe_wecker_feuert();          // der Aufschub von 08:15
+  pruefe("der Aufschub klopft bei offener App", attrappe_fenster_zahl() == 2 && stub_jetzt == ortszeit(2026, 7, 14, 8, 15));
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+  attrappe_taste(BUTTON_ID_DOWN);
+}
+static void abschnitt_aufschub_offen(void) {
+  printf("\nHoechstens drei Aufschuebe: der Aufschub klopft bei offener App\n");
+  uhr(datum_tag(2026, 7, 14), false);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0);
+  starten(APP_LAUNCH_WAKEUP, 480, spaeter_druecken);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 10);
+  starten(APP_LAUNCH_USER, 0, aufschub_bei_offener_app);
+  pruefe("die Erinnerung zeigt den ersten Aufschub", s_lief == 1 && vermerk("Aufschub 1 von 3"));
+  const AttrappeWecker *a = aufschub_wecker();
+  pruefe("\"spaeter\": 08:30", a && ist_um(a->zeit, 2026, 7, 14, 8, 30));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, spaeter_druecken);
+  pruefe("um 08:30 ist es der zweite", s_lief == 1 && vermerk("Aufschub 2 von 3"));
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
   abschnitt_neuplanen, abschnitt_offen, abschnitt_genommen_ohne_fx, abschnitt_genommen_mit_fx,
   abschnitt_genommen_frist, abschnitt_genommen_offline, abschnitt_kur,
+  abschnitt_aufschub_start, abschnitt_aufschub_offen,
 };
 
 int main(void) {

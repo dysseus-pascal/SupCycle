@@ -19,6 +19,9 @@
 #define PERSIST_SNOOZE_AT     5
 #define PERSIST_SNOOZE_MINUTE 6
 #define PERSIST_SNOOZE_COUNT  7
+// Der Tag der aufgeschobenen Runde. Der Zaehler gilt nur an diesem Tag: die
+// Runde 08:00 von morgen ist ein neuer Anlass und faengt bei null an.
+#define PERSIST_SNOOZE_TAG    10
 
 static time_t prv_snooze_at(void) {
   return persist_exists(PERSIST_SNOOZE_AT) ? (time_t)persist_read_int(PERSIST_SNOOZE_AT) : 0;
@@ -28,6 +31,9 @@ static int prv_snooze_minute(void) {
 }
 int remind_snooze_count(int minute) {
   if (minute < 0 || prv_snooze_minute() != minute) return 0;
+  // Ohne Tag (Aufschub aus 0.15.0 und frueher) zaehlt er nicht - lieber
+  // einmal zu viel aufschieben als eine Runde vorzeitig verfallen lassen.
+  if (!persist_exists(PERSIST_SNOOZE_TAG) || persist_read_int(PERSIST_SNOOZE_TAG) != plan_today()) return 0;
   return persist_exists(PERSIST_SNOOZE_COUNT) ? persist_read_int(PERSIST_SNOOZE_COUNT) : 0;
 }
 bool remind_snooze_left(int minute) {
@@ -37,12 +43,14 @@ void remind_snooze_clear(void) {
   persist_delete(PERSIST_SNOOZE_AT);
   persist_delete(PERSIST_SNOOZE_MINUTE);
   persist_delete(PERSIST_SNOOZE_COUNT);
+  persist_delete(PERSIST_SNOOZE_TAG);
 }
 void remind_snooze(int minute) {
   const int count = remind_snooze_count(minute) + 1;
   persist_write_int(PERSIST_SNOOZE_AT, (int)(time(NULL) + SC_SNOOZE_MIN * 60));
   persist_write_int(PERSIST_SNOOZE_MINUTE, minute);
   persist_write_int(PERSIST_SNOOZE_COUNT, count);
+  persist_write_int(PERSIST_SNOOZE_TAG, (int)plan_today());
   APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub %d fuer Minute %d", count, minute);
   remind_schedule();
 }
@@ -108,9 +116,12 @@ void remind_schedule(void) {
     if (gilt) {
       if (prv_schedule(snooze_at, COOKIE_SNOOZE + snooze_minute, true)) n++;
     } else if (snooze_at <= now) {
-      // Verstrichen, ohne dass die App ihn bekam (Uhr aus, Wecker verworfen):
-      // dann ist er vorbei. Die Runde bleibt auf dem Heute-Schirm offen.
-      remind_snooze_clear();
+      // Verstrichen: meist hat er eben geklopft, sonst verpasste ihn die Uhr
+      // (aus, Wecker verworfen). Vorbei ist nur der WECKER. Den Zaehler
+      // loeschen erst Abhaken und Wegdruecken - bis 0.15.0 fiel er hier mit
+      // weg, und jeder Aufschub war wieder der erste: "hoechstens dreimal"
+      // griff nie.
+      persist_delete(PERSIST_SNOOZE_AT);
     }
   }
 

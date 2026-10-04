@@ -68,6 +68,9 @@ int remind_launch_minute(void);
 
 // Die Runde zu dieser Uhrzeit in SC_SNOOZE_MIN Minuten nochmal. Zaehlt mit;
 // ein Aufschub zu einer anderen Runde ersetzt den alten und zaehlt von vorn.
+// Der Zaehler ueberlebt das Klopfen des Aufschubs - sonst waere jeder
+// Aufschub der erste. Von vorn zaehlt erst eine andere Runde oder ein neuer
+// Tag; geloescht wird er beim Abhaken und Wegdruecken.
 void remind_snooze(int minute);
 // Darf diese Runde noch aufgeschoben werden?
 bool remind_snooze_left(int minute);

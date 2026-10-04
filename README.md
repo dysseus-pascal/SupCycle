@@ -433,7 +433,9 @@ so trug die Mittagsrunde den Morgen nach, den man bewusst hatte liegen lassen.
 **Höchstens dreimal.** Wer dreimal „später" sagt, meint „heute nicht": beim
 vierten Druck verfällt die Runde wie beim Wegdrücken, und das Zeichen für
 „später" ist dann schon aus der Leiste verschwunden. Unten auf dem Schirm steht,
-der wievielte Aufschub es ist.
+der wievielte Aufschub es ist. Der Zähler gilt der Runde dieses Tages; bis
+0.15.0 löschte ihn das Neustellen nach jedem Klopfen des Aufschubs, und jeder
+Aufschub war wieder der erste.
 
 **Der Aufschub überlebt einen Neustart.** Er liegt im Persist. Bis 0.10.0
 stand er nur als Wecker — und weil die App bei jedem Start alle Wecker neu

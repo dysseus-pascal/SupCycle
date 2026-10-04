@@ -13,6 +13,8 @@
 //     sich nicht, wenn er verpasst wird.
 //   - DIE UHRZEIT GILT AM UMSTELLUNGSTAG (Audit M2): 08:00 am Sonntag der
 //     Umstellung ist 08:00 auf der Uhr, nicht 07:00 oder 09:00.
+//   - HOECHSTENS DREI AUFSCHUEBE. Bis 0.15.0 loeschte das Neustellen nach
+//     dem Klopfen des Aufschubs den Zaehler mit - jeder war wieder der erste.
 //
 // Die Erwartungen kommen aus der C-Bibliothek (mktime, localtime), nicht aus
 // kalender.c.
@@ -35,6 +37,10 @@ static void pruefe(const char *was, bool ok) {
 
 #define COOKIE_NEUPLANEN 5000   // remind.c - die Uhr liest ihn beim Start
 #define COOKIE_AUFSCHUB 2000
+// Die Faecher des Aufschubs, wie 0.15.0 sie hinterliess (remind.c).
+#define FACH_AUFSCHUB_ZEIT   5
+#define FACH_AUFSCHUB_MINUTE 6
+#define FACH_AUFSCHUB_ZAHL   7
 
 static time_t ortszeit(int j, int mo, int t, int h, int mi) {
   struct tm tm = { .tm_year = j - 1900, .tm_mon = mo - 1, .tm_mday = t,
@@ -271,12 +277,69 @@ static void abschnitt_aufschub(void) {
   remind_snooze_clear();
 }
 
+// Der Aufschub-Wecker dieser Runde, oder NULL.
+static const AttrappeWecker *aufschub_wecker(int minute) {
+  for (int i = 0; i < attrappe_wecker_zahl(); i++) {
+    if (attrappe_wecker(i)->cookie == COOKIE_AUFSCHUB + minute) return attrappe_wecker(i);
+  }
+  return NULL;
+}
+
+static void abschnitt_aufschub_zaehlt(void) {
+  printf("\nHoechstens drei Aufschuebe, auch wenn der Aufschub klopft\n");
+  const int32_t heute = datum_tag(2026, 7, 14);
+  frisch(ortszeit(2026, 7, 14, 8, 0));
+  Platz zwei[] = { { "A", 8, 0, 1, 0, 0, heute }, { "B", 12, 30, 1, 0, 0, heute } };
+  plan_setzen(zwei, 2);
+  // Wie auf der Uhr: "spaeter", der Aufschub klopft, die App startet und
+  // stellt alle Wecker neu - dreimal hintereinander.
+  for (int k = 1; k <= SC_SNOOZE_MAX; k++) {
+    char was[96];
+    snprintf(was, sizeof(was), "vor dem %d. Aufschub ist einer uebrig", k);
+    pruefe(was, remind_snooze_left(480));
+    remind_snooze(480);
+    const AttrappeWecker *a = aufschub_wecker(480);
+    snprintf(was, sizeof(was), "der %d. steht 15 min spaeter", k);
+    pruefe(was, a && a->zeit == stub_jetzt + SC_SNOOZE_MIN * 60);
+    if (!a) return;
+    stub_jetzt = a->zeit;         // er klopft ...
+    remind_schedule();            // ... und die App stellt neu
+    snprintf(was, sizeof(was), "nach dem Klopfen zaehlt er %d", k);
+    pruefe(was, remind_snooze_count(480) == k);
+    pruefe("  und klopft nicht nochmal", aufschub_wecker(480) == NULL);
+  }
+  pruefe("nach dem dritten ist keiner mehr uebrig", !remind_snooze_left(480));
+  pruefe("die Runde 12:30 hat ihre eigenen drei", remind_snooze_count(750) == 0 && remind_snooze_left(750));
+
+  // Morgen ist die Runde 08:00 ein neuer Anlass.
+  stub_jetzt = ortszeit(2026, 7, 15, 8, 0);
+  remind_schedule();
+  pruefe("morgen faengt die Runde 08:00 bei null an", remind_snooze_count(480) == 0 && remind_snooze_left(480));
+  remind_snooze(480);
+  pruefe("  und zaehlt dann 1", remind_snooze_count(480) == 1);
+  remind_snooze_clear();
+  pruefe("Abhaken und Wegdruecken loeschen ihn", remind_snooze_count(480) == 0);
+
+  // Ein Aufschub, den 0.15.0 hinterliess (ohne Tag): er klopft noch, zaehlt
+  // aber nicht - lieber einmal zu oft aufschieben als zu frueh verfallen.
+  frisch(ortszeit(2026, 7, 14, 8, 5));
+  plan_setzen(zwei, 2);
+  persist_write_int(FACH_AUFSCHUB_ZEIT, (int)ortszeit(2026, 7, 14, 8, 15));
+  persist_write_int(FACH_AUFSCHUB_MINUTE, 480);
+  persist_write_int(FACH_AUFSCHUB_ZAHL, 3);
+  remind_schedule();
+  pruefe("0.15.0-Aufschub ohne Tag: er klopft um 08:15", aufschub_wecker(480) && ist_um(aufschub_wecker(480)->zeit, 2026, 7, 14, 8, 15));
+  pruefe("  und laesst noch Aufschuebe uebrig", remind_snooze_left(480));
+  remind_snooze_clear();
+}
+
 int main(void) {
   printf("Zeitzone: %s\n", getenv("TZ") ? getenv("TZ") : "(Rechner)");
   abschnitt_vorausplanen();
   abschnitt_neuplanen();
   abschnitt_umstellung();
   abschnitt_aufschub();
+  abschnitt_aufschub_zaehlt();
   printf("%s\n", s_fehler ? "NICHT BESTANDEN" : "alles bestanden");
   return s_fehler ? 1 : 0;
 }
