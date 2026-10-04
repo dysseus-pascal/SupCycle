@@ -224,12 +224,36 @@ static void abschnitt_umstellung(void) {
          persist_read_int(FACH_TAGE) == 2 && persist_read_int(FACH_TAG) == datum_tag(2026, 7, 14));
 }
 
+static void abschnitt_gespeichert(void) {
+  printf("\nDer gespeicherte Plan (N2)\n");
+  // Sieben Eintraege im alten 25-Byte-Format (175 Byte): gelesen werden
+  // sechs, gespeichert muss genau das werden, was gelesen wurde.
+  attrappe_persist_leeren();
+  stub_jetzt = ortszeit(2026, 7, 14, 9, 0);
+  plan_init();
+  const char *namen[] = { "Zink", "Magnesium", "Eisen", "Kreatin", "Vitamin D3", "Omega 3", "Selen" };
+  uint8_t alt[7 * SC_ITEM_BYTES_V1];
+  memset(alt, 0, sizeof(alt));
+  for (int i = 0; i < 7; i++) {
+    uint8_t *p = alt + i * SC_ITEM_BYTES_V1;
+    memcpy(p, namen[i], strlen(namen[i]));
+    p[16] = 8; p[18] = 1;      // mode 1: taeglich
+  }
+  pruefe("sieben alte Eintraege werden gelesen", plan_set_from_bytes(alt, sizeof(alt)) && plan_count() == 6);
+  pruefe("gespeichert sind 156 Byte", persist_get_size(FACH_PLAN) == SC_MAX_ITEMS * SC_ITEM_BYTES);
+  plan_init();
+  bool gleich = plan_count() == 6;
+  for (int i = 0; i < 6; i++) gleich = gleich && strcmp(plan_item(i)->name, namen[i]) == 0;
+  pruefe("nach dem Neustart dieselben sechs Namen", gleich);
+}
+
 int main(void) {
   printf("Zeitzone: %s\n", getenv("TZ") ? getenv("TZ") : "(Rechner)");
   abschnitt_datum();
   abschnitt_heute();
   abschnitt_haken_london();
   abschnitt_umstellung();
+  abschnitt_gespeichert();
   printf("%s\n", s_fehler ? "NICHT BESTANDEN" : "alles bestanden");
   return s_fehler ? 1 : 0;
 }

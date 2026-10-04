@@ -326,7 +326,12 @@ bool plan_set_from_bytes(const uint8_t *data, uint16_t len) {
   }
 
   memcpy(s_items, fresh, sizeof(s_items));
-  persist_write_data(PERSIST_PLAN, data, len < sizeof(s_items) ? len : (uint16_t)sizeof(s_items));
+  // GESPEICHERT WIRD DER GELESENE PLAN, nicht die empfangenen Bytes: immer
+  // 6 x 26 Byte, auch wenn 25-Byte-Eintraege oder mehr als sechs kamen. Bis
+  // 0.15.0 wurde auf sizeof(s_items) gekappt (168 mit Fuellbytes) - sieben
+  // alte Eintraege ergaben 168 Byte, die plan_init als 26er-Format las, und
+  // der Plan war nach dem Neustart zerstueckelt (Audit N2).
+  prv_save_plan();
   APP_LOG(APP_LOG_LEVEL_INFO, "Plan uebernommen: %d Eintraege", plan_count());
   return true;
 }
