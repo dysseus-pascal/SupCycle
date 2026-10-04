@@ -653,6 +653,51 @@ function pushPins(ymd, dueMask, takenMask) {
   });
 }
 
+// --------------------------------------------- Die Einstellungen in der Seite
+
+// '$' UND '<' KOMMEN UNVERAENDERT DURCH (Audit N8). Clay setzt die
+// gespeicherten Werte mit String.replace in die Seite ein: dort sind '$&',
+// "$'", '$`' und '$$' in einem Namen Ersetzungsmuster - aus 'a$&b' wurde
+// 'a$$SETTINGS$$b', aus "a$'b" eine doppelte Seite. Und es maskiert nichts:
+// ein '</script>' im Namen beendete das Skript der Seite vorzeitig. Clay
+// bleibt, wie es ist. Statt der Einstellungen bekommt es eine Marke, und an
+// ihre Stelle kommen danach die Einstellungen als JSON - ohne replace, mit
+// '<' als \u003c (in der Seite wieder '<').
+var SEITEN_MARKE = 'supcycle-einstellungen';
+
+function jsonFuerSeite(werte) {
+  return JSON.stringify(werte)
+    .replace(/</g, '\\u003c')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+function konfigUrl() {
+  var echt = null;
+  var werte = {};
+  try {
+    echt = localStorage.getItem('clay-settings');
+    werte = JSON.parse(echt || '{}') || {};
+  } catch (e) { meldeFehler('Konfigseite lesen', e); }
+  var url = null;
+  try {
+    localStorage.setItem('clay-settings', JSON.stringify(SEITEN_MARKE));
+    url = getClay().generateUrl();
+  } catch (e) { meldeFehler('Konfigseite bauen', e); }
+  try {
+    if (echt === null) localStorage.removeItem('clay-settings');
+    else localStorage.setItem('clay-settings', echt);
+  } catch (e) { meldeFehler('Konfigseite zuruecklegen', e); }
+  var teile = url ? url.split(encodeURIComponent(JSON.stringify(SEITEN_MARKE))) : [];
+  if (teile.length !== 2) {
+    // Ein anderes Clay, das die Einstellungen anders einsetzt: dann eben
+    // wie bisher - eine Seite mit Sonderzeichen-Fehler ist besser als keine.
+    console.log('Konfigseite: Marke ' + (teile.length - 1) + ' mal gefunden, Clay setzt selbst ein');
+    return getClay().generateUrl();
+  }
+  return teile[0] + encodeURIComponent(jsonFuerSeite(werte)) + teile[1];
+}
+
 // ---------------------------------------------------------------- Ereignisse
 
 Pebble.addEventListener('showConfiguration', function () {
@@ -662,15 +707,23 @@ Pebble.addEventListener('showConfiguration', function () {
   // geaenderte.
   var items = storedItems();
   if (items) mergeClaySettings(ankerInDieSeite(items));
-  Pebble.openURL(getClay().generateUrl());
+  Pebble.openURL(konfigUrl());
 });
 
 Pebble.addEventListener('webviewclosed', function (e) {
   tageUmstellen();
   if (!e || !e.response) return;
   // false = Clay soll nichts von sich aus schicken; aus den Feldern wird erst
-  // ein Block gebaut, und der geht als eines hinaus.
-  var dict = getClay().getSettings(e.response, false);
+  // ein Block gebaut, und der geht als eines hinaus. Clay wirft bei einer
+  // Antwort, die kein JSON ist (abgebrochen: "CANCELLED") - dann bleibt alles,
+  // wie es war.
+  var dict;
+  try {
+    dict = getClay().getSettings(e.response, false);
+  } catch (err) {
+    meldeFehler('Antwort der Konfigseite', err);
+    return;
+  }
   var plan = buildPlan(dict);
   var fx = readFx(dict);
   try {
