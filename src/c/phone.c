@@ -12,7 +12,7 @@
 // Der Plan faehrt in jeder Meldung mit (156 Byte), dazu die Namen und der
 // Tagesstand - 256 reichten dafuer nicht mehr. Der groesste Fall - voller
 // Plan mit 15-Byte-Namen, Hakenzeiten, Startanfrage mit Sprache und die
-// Frage nach der Zeit - braucht 375 Byte (nachgezaehlt in
+// Frage nach der Zeit - braucht 386 Byte (nachgezaehlt in
 // tools/phone_host_test.c).
 #define OUTBOX_SIZE 512
 
@@ -23,6 +23,14 @@
 
 static void (*s_observer)(void);
 static AppTimer *s_retry;
+// s_retry ist der Nachschub nach BUSY (700 ms), nicht das Nachfassen der
+// Startanfrage: nur auf ihn wartet phone_when_sent.
+static bool s_retry_busy;
+// Eine Meldung ist abgeschickt und wartet auf ACK oder NACK.
+static bool s_unterwegs;
+// Wer auf das Ende der Meldung wartet (phone_when_sent), und bis wann.
+static void (*s_wenn_fertig)(void);
+static AppTimer *s_wenn_frist;
 // Der Tagesstand kam nicht an - bei der naechsten Verbindung nachholen.
 static bool s_unsent;
 // Die Startanfrage steht noch aus - auch ein Nachfassen nach BUSY muss sie
@@ -98,6 +106,9 @@ static int prv_write_settings(DictionaryIterator *out) {
   uint8_t bytes[SC_MAX_ITEMS * SC_ITEM_BYTES];
   const uint16_t n = plan_to_bytes(bytes);
   int fehler = dict_write_data(out, MESSAGE_KEY_PLAN, bytes, n);
+  // Wie die Anker zu lesen sind (plan.h): Boulder rechnet mit einer Uhr von
+  // vor der Umstellung anders als mit dieser.
+  fehler |= dict_write_int32(out, MESSAGE_KEY_PLANFASSUNG, SC_PLANFASSUNG);
   fehler |= dict_write_int32(out, MESSAGE_KEY_FX, prefs_fx() ? 1 : 0);
   return fehler;
 }
@@ -154,13 +165,52 @@ static void prv_inbox(DictionaryIterator *iter, void *context) {
 
 static void prv_retry_cb(void *data) {
   s_retry = NULL;
+  s_retry_busy = false;
   phone_send_today();
+}
+
+// Steht die Tagesmeldung noch aus? Unterwegs, oder der Nachschub nach BUSY
+// kommt gleich.
+static bool prv_steht_aus(void) {
+  return s_unterwegs || (s_retry && s_retry_busy);
+}
+
+// Wer wartet, erfaehrt es - genau einmal.
+static void prv_fertig_melden(void) {
+  if (!s_wenn_fertig || prv_steht_aus()) return;
+  void (*fertig)(void) = s_wenn_fertig;
+  s_wenn_fertig = NULL;
+  if (s_wenn_frist) {
+    app_timer_cancel(s_wenn_frist);
+    s_wenn_frist = NULL;
+  }
+  fertig();
+}
+
+static void prv_frist_cb(void *data) {
+  s_wenn_frist = NULL;
+  void (*fertig)(void) = s_wenn_fertig;
+  s_wenn_fertig = NULL;
+  APP_LOG(APP_LOG_LEVEL_WARNING, "Tagesmeldung ohne Antwort - es geht trotzdem weiter");
+  if (fertig) fertig();
+}
+
+void phone_when_sent(void (*fertig)(void), uint32_t max_ms) {
+  if (!fertig) return;
+  if (!prv_steht_aus()) {
+    fertig();
+    return;
+  }
+  if (s_wenn_frist) app_timer_cancel(s_wenn_frist);
+  s_wenn_fertig = fertig;
+  s_wenn_frist = app_timer_register(max_ms, prv_frist_cb, NULL);
 }
 
 void phone_send_today(void) {
   if (s_retry) {
     app_timer_cancel(s_retry);
     s_retry = NULL;
+    s_retry_busy = false;
   }
   DictionaryIterator *out;
   if (app_message_outbox_begin(&out) != APP_MSG_OK) {
@@ -169,6 +219,7 @@ void phone_send_today(void) {
     // blieben still auf dem Stand von gestern. Einmal nachfassen genuegt;
     // schlaegt auch das fehl, holt es der naechste Start nach.
     s_retry = app_timer_register(700, prv_retry_cb, NULL);
+    s_retry_busy = s_retry != NULL;
     return;
   }
   uint32_t due = 0, taken = 0;
@@ -176,10 +227,11 @@ void phone_send_today(void) {
     if (plan_due_today(i)) due |= (1u << i);
     if (plan_taken(i)) taken |= (1u << i);
   }
-  // Als KALENDERDATUM JJJJMMTT, nicht als Tagesnummer. Die Tagesnummer
-  // zaehlt Tage seit der Epoche aus der Ortszeit; das Telefon kann daraus den
-  // Kalendertag nicht sicher zurueckrechnen und landete bei positiver
-  // Zeitzone einen Tag zu frueh - der Pin lag dann in der Vergangenheit.
+  // Als KALENDERDATUM JJJJMMTT, nicht als Tagesnummer. Die Tagesnummer bis
+  // 0.15.0 zaehlte die Ortsmitternacht in Tagen seit der Epoche; das Telefon
+  // konnte daraus den Kalendertag nicht sicher zurueckrechnen und landete bei
+  // positiver Zeitzone einen Tag zu frueh - der Pin lag dann in der
+  // Vergangenheit. Boulder und pkjs lesen JJJJMMTT, und dabei bleibt es.
   // Jede Schreibstelle meldet, ob das Feld hineinpasste. Der Postausgang ist
   // fuer den groessten Fall bemessen (siehe OUTBOX_SIZE); passt trotzdem
   // etwas nicht, fehlt es still in der Nachricht - darum steht es im Log.
@@ -218,7 +270,11 @@ void phone_send_today(void) {
   if (gesendet != APP_MSG_OK) {
     APP_LOG(APP_LOG_LEVEL_WARNING, "Tagesmeldung nicht abgeschickt: %d", (int)gesendet);
     s_unsent = true;
+    // Ohne Verbindung wartet niemand umsonst.
+    prv_fertig_melden();
+    return;
   }
+  s_unterwegs = true;
 }
 
 // OHNE VERBINDUNG ABGEHAKT: die Meldung scheitert still, und der Pin in der
@@ -226,6 +282,7 @@ void phone_send_today(void) {
 // vergessen. Sie geht deshalb noch einmal, sobald das Telefon wieder da ist.
 static void prv_outbox_failed(DictionaryIterator *iter, AppMessageResult reason, void *context) {
   APP_LOG(APP_LOG_LEVEL_WARNING, "Meldung nicht angekommen: %d", (int)reason);
+  s_unterwegs = false;
   if (dict_find(iter, MESSAGE_KEY_TODAY)) s_unsent = true;
   // Die Startanfrage bleibt stehen (s_anfrage) und faehrt beim Nachholen mit.
   // Ein paar Mal kurz nachfassen: meist laeuft pkjs nur noch an.
@@ -233,11 +290,16 @@ static void prv_outbox_failed(DictionaryIterator *iter, AppMessageResult reason,
     s_nachgefasst++;
     s_retry = app_timer_register(ANFRAGE_NACHFASSEN_MS, prv_retry_cb, NULL);
   }
+  // Abgelehnt ist auch eine Antwort: der Haken liegt im Persist, und der
+  // naechste Start oder das Wiederverbinden schickt ihn.
+  prv_fertig_melden();
 }
 
 static void prv_outbox_sent(DictionaryIterator *iter, void *context) {
+  s_unterwegs = false;
   if (dict_find(iter, MESSAGE_KEY_TODAY)) s_unsent = false;
   if (dict_find(iter, MESSAGE_KEY_REQUEST)) s_anfrage = false;
+  prv_fertig_melden();
 }
 
 static void prv_connection(bool connected) {

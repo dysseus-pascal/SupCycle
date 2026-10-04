@@ -24,3 +24,14 @@ void phone_set_observer(void (*on_plan)(void));
 // JavaScript nachzubauen hiesse, zwei Wahrheiten zu pflegen, die
 // auseinanderlaufen koennen.
 void phone_send_today(void);
+
+// `fertig` rufen, sobald die Tagesmeldung erledigt ist: das Telefon hat sie
+// bestaetigt oder abgelehnt, oder sie ging gar nicht erst hinaus - spaetestens
+// aber nach `max_ms`. Steht nichts aus, sofort.
+//
+// WOZU: wer die App nach dem Abhaken schliesst, beendet auch die Meldung.
+// Die Uhr verwirft beim Beenden, was noch im Postausgang liegt, und ein
+// Nachfassen nach BUSY stirbt mit der App (Audit M3). Der Haken bleibt zwar im
+// Persist, aber faellt der naechste Start auf den naechsten Tag, ist er weg,
+// bevor das Telefon ihn kennt.
+void phone_when_sent(void (*fertig)(void), uint32_t max_ms);

@@ -86,10 +86,18 @@ function getClay() {
   return s_clay;
 }
 
-// Heutiger Tag als Tage seit der Epoche, aus der ORTSZEIT gerechnet. Muss zu
-// plan_today() auf der Uhr passen — beide zählen ganze Tage, nicht Sekunden,
-// damit die Sommerzeit den Zyklus nicht um einen Tag verschiebt.
+// Heutiger Tag als KALENDERTAG: Tage vom 01.01.1970 bis zum heutigen Datum
+// der Ortszeit. Muss zu plan_today() auf der Uhr passen (src/c/kalender.h) -
+// beide zählen ganze Tage, nicht Sekunden, damit die Sommerzeit den Zyklus
+// nicht um einen Tag verschiebt. Date.UTC rechnet das Datum ohne Zeitzone.
 function todayDay() {
+  var now = new Date();
+  return Math.floor(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()) / 86400000);
+}
+
+// Der Tag, wie ihn 0.15.0 und frueher zaehlten: Ortsmitternacht durch einen
+// Tag. Oestlich von Greenwich der Vortag. Nur noch fuer die Umstellung.
+function todayDayBis015() {
   var now = new Date();
   var midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   return Math.floor(midnight.getTime() / 86400000);
@@ -364,6 +372,42 @@ function storedItems() {
   }
 }
 
+// GESPEICHERTE ANKER AUF KALENDERTAGE UMSTELLEN, einmal - wie plan_init auf
+// der Uhr, mit derselben Verschiebung (beide Zaehlungen heute). Ohne das
+// ginge ein noch nicht zugestellter Plan (Vermerk) oder der Plan fuer eine
+// frische Uhr mit Ankern der alten Zaehlung hinaus, und der Zyklus stuende
+// einen Tag daneben.
+var TAGE_KEY = 'supcycle_tage';   // '2' = Kalendertage
+function tageUmstellen() {
+  try {
+    if (localStorage.getItem(TAGE_KEY) === '2') return;
+    var versatz = todayDay() - todayDayBis015();
+    if (versatz) {
+      var raw = localStorage.getItem(PLAN_KEY);
+      var bytes = raw ? JSON.parse(raw) : null;
+      if (bytes && bytes.length === SLOTS * ITEM_BYTES) {
+        for (var i = 0; i < SLOTS; i++) {
+          var o = i * ITEM_BYTES;
+          if (!bytes[o + 18]) continue;
+          var a = int32le((bytes[o + 22] | (bytes[o + 23] << 8) | (bytes[o + 24] << 16) | (bytes[o + 25] << 24)) + versatz);
+          for (var b = 0; b < 4; b++) bytes[o + 22 + b] = a[b];
+        }
+        localStorage.setItem(PLAN_KEY, JSON.stringify(bytes));
+      }
+      var rawItems = localStorage.getItem(ITEMS_KEY);
+      var items = rawItems ? JSON.parse(rawItems) : null;
+      if (items && items.length) {
+        for (var k = 0; k < items.length; k++) {
+          if (items[k] && typeof items[k].anchor === 'number') items[k].anchor += versatz;
+        }
+        localStorage.setItem(ITEMS_KEY, JSON.stringify(items));
+      }
+    }
+    localStorage.setItem(TAGE_KEY, '2');
+    console.log('Anker als Kalendertage, um ' + versatz + ' verschoben');
+  } catch (e) { meldeFehler('Tage umstellen', e); }
+}
+
 function storedPlan() {
   try {
     var raw = localStorage.getItem(PLAN_KEY);
@@ -528,10 +572,12 @@ function pushPins(ymd, dueMask, takenMask) {
 // ---------------------------------------------------------------- Ereignisse
 
 Pebble.addEventListener('showConfiguration', function () {
+  tageUmstellen();
   Pebble.openURL(getClay().generateUrl());
 });
 
 Pebble.addEventListener('webviewclosed', function (e) {
+  tageUmstellen();
   if (!e || !e.response) return;
   // false = Clay soll nichts von sich aus schicken; aus den Feldern wird erst
   // ein Block gebaut, und der geht als eines hinaus.
@@ -551,6 +597,7 @@ Pebble.addEventListener('webviewclosed', function (e) {
 });
 
 Pebble.addEventListener('appmessage', function (e) {
+  tageUmstellen();
   var p = e.payload;
   // Die Uhr sagt beim Start, in welcher Sprache sie beschriftet ist, und
   // fragt zugleich nach dem Plan.
@@ -598,5 +645,6 @@ Pebble.addEventListener('appmessage', function (e) {
 });
 
 Pebble.addEventListener('ready', function () {
+  tageUmstellen();
   console.log('SupCycle bereit');
 });

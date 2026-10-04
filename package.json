@@ -74,7 +74,8 @@
       "NAMES",
       "TAKEN_AT",
       "UNTAKE",
-      "UHRZEIT"
+      "UHRZEIT",
+      "PLANFASSUNG"
     ],
     "resources": {
       "media": [

@@ -156,16 +156,35 @@ void attrappe_eingang_zustellen(void) {
 }
 
 // --- Zeitgeber ---
-struct AppTimer { bool aktiv; uint32_t ms; AppTimerCallback cb; void *daten; };
+// `faellig` zaehlt auf einer eigenen Uhr in ms (attrappe_zeitgeber_vorspulen);
+// attrappe_zeitgeber_ablaufen loest dagegen alle ohne Reihenfolge aus.
+struct AppTimer { bool aktiv; uint32_t ms; AppTimerCallback cb; void *daten; uint64_t faellig; };
 static struct AppTimer s_zeitgeber[16];
+static uint64_t s_uhr_ms;
 AppTimer *app_timer_register(uint32_t timeout_ms, AppTimerCallback callback, void *callback_data) {
   for (unsigned i = 0; i < sizeof(s_zeitgeber) / sizeof(s_zeitgeber[0]); i++) {
     if (!s_zeitgeber[i].aktiv) {
-      s_zeitgeber[i] = (struct AppTimer){ true, timeout_ms, callback, callback_data };
+      s_zeitgeber[i] = (struct AppTimer){ true, timeout_ms, callback, callback_data, s_uhr_ms + timeout_ms };
       return &s_zeitgeber[i];
     }
   }
   return NULL;
+}
+void attrappe_zeitgeber_vorspulen(uint32_t ms) {
+  const uint64_t ziel = s_uhr_ms + ms;
+  for (;;) {
+    // Der naechste faellige zuerst - wie auf der Uhr, wo die Zeit vergeht.
+    struct AppTimer *naechster = NULL;
+    for (unsigned i = 0; i < sizeof(s_zeitgeber) / sizeof(s_zeitgeber[0]); i++) {
+      struct AppTimer *z = &s_zeitgeber[i];
+      if (z->aktiv && z->faellig <= ziel && (!naechster || z->faellig < naechster->faellig)) naechster = z;
+    }
+    if (!naechster) break;
+    s_uhr_ms = naechster->faellig;
+    naechster->aktiv = false;
+    naechster->cb(naechster->daten);
+  }
+  s_uhr_ms = ziel;
 }
 void app_timer_cancel(AppTimer *timer) { if (timer) timer->aktiv = false; }
 int attrappe_zeitgeber_offen(void) {
@@ -200,3 +219,59 @@ void attrappe_verbindung(bool da) {
 
 const char *attrappe_sprache = "en_US";
 const char *i18n_get_system_locale(void) { return attrappe_sprache; }
+
+// --- Wecker ---
+#define WECKER_MAX 8          // MAX_WAKEUP_EVENTS_PER_APP
+#define WECKER_FENSTER 60     // WAKEUP_EVENT_WINDOW
+static AttrappeWecker s_wecker[64];
+static int s_wecker_zahl;
+static WakeupId s_naechste_id = 1;
+static WakeupHandler s_wecker_abonnent;
+static AppLaunchReason s_start_grund = APP_LAUNCH_USER;
+static int32_t s_start_cookie;
+
+WakeupId wakeup_schedule(time_t timestamp, int32_t cookie, bool notify_if_missed) {
+  if (timestamp - stub_jetzt <= 0) return E_INVALID_ARGUMENT;
+  // Wie service.c: erst die Minute um jeden anderen, dann die Anzahl.
+  for (int i = 0; i < s_wecker_zahl; i++) {
+    if (s_wecker[i].zeit - WECKER_FENSTER < timestamp && timestamp < s_wecker[i].zeit + WECKER_FENSTER) {
+      return E_RANGE;
+    }
+  }
+  if (s_wecker_zahl >= WECKER_MAX) return E_OUT_OF_RESOURCES;
+  // Nach Zeit einsortieren: so liest der Test sie in der Reihenfolge, in der
+  // sie klopfen.
+  int k = s_wecker_zahl;
+  while (k > 0 && s_wecker[k - 1].zeit > timestamp) { s_wecker[k] = s_wecker[k - 1]; k--; }
+  s_wecker[k] = (AttrappeWecker){ s_naechste_id++, timestamp, cookie, notify_if_missed };
+  s_wecker_zahl++;
+  return s_wecker[k].id;
+}
+void wakeup_cancel_all(void) { s_wecker_zahl = 0; }
+bool wakeup_get_launch_event(WakeupId *wakeup_id, int32_t *cookie) {
+  if (s_start_grund != APP_LAUNCH_WAKEUP) return false;
+  if (wakeup_id) *wakeup_id = 0;
+  if (cookie) *cookie = s_start_cookie;
+  return true;
+}
+void wakeup_service_subscribe(WakeupHandler handler) { s_wecker_abonnent = handler; }
+AppLaunchReason launch_reason(void) { return s_start_grund; }
+void attrappe_wecker_leeren(void) { s_wecker_zahl = 0; s_wecker_abonnent = NULL; }
+int attrappe_wecker_zahl(void) { return s_wecker_zahl; }
+const AttrappeWecker *attrappe_wecker(int nummer) {
+  return (nummer >= 0 && nummer < s_wecker_zahl) ? &s_wecker[nummer] : NULL;
+}
+void attrappe_start(AppLaunchReason grund, int32_t cookie) {
+  s_start_grund = grund;
+  s_start_cookie = cookie;
+}
+bool attrappe_wecker_abonniert(void) { return s_wecker_abonnent != NULL; }
+bool attrappe_wecker_feuert(void) {
+  if (s_wecker_zahl == 0) return false;
+  const AttrappeWecker w = s_wecker[0];
+  memmove(&s_wecker[0], &s_wecker[1], (size_t)(s_wecker_zahl - 1) * sizeof(s_wecker[0]));
+  s_wecker_zahl--;
+  stub_jetzt = w.zeit;
+  if (s_wecker_abonnent) s_wecker_abonnent(w.id, w.cookie);
+  return true;
+}

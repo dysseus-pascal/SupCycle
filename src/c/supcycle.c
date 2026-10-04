@@ -36,6 +36,20 @@ static void prv_plan_changed(void) {
   remind_schedule();
 }
 
+// EIN WECKER, WAEHREND DIE APP SCHON LAEUFT. Dann startet die Uhr sie nicht
+// neu, sondern meldet ihn nur hierher - bis 0.15.0 hoerte niemand zu: keine
+// Erinnerung, keine Vibration, und auch der Weckplan wurde nicht weiter
+// gestellt (Audit W-H2). Ein Aufschub oder eine zweite Runde, die feuerte,
+// waehrend das Erinnerungsfenster noch offen stand, verpuffte genauso.
+static void prv_wakeup(WakeupId id, int32_t cookie) {
+  const int minute = remind_cookie_minute(cookie);
+  APP_LOG(APP_LOG_LEVEL_INFO, "Wecker bei offener App (Cookie %d)", (int)cookie);
+  // Steht schon eine Erinnerung, bleibt sie; nichts offen heisst nichts zu
+  // zeigen. Die App bleibt in beiden Faellen offen - man benutzt sie gerade.
+  if (minute != -1) reminder_window_push(minute);
+  remind_schedule();
+}
+
 static void prv_init(void) {
   // Sprache der Uhr uebernehmen, bevor das erste Fenster Texte holt
   strings_refresh();
@@ -49,8 +63,21 @@ static void prv_init(void) {
 
   prefs_init();
   plan_init();
+
+  // DER WECKER ZUM NEUPLANEN (remind.h): Wecker stellen und gleich wieder
+  // gehen. Ohne Fenster beendet die Uhr die App von selbst, und ohne
+  // phone_init geht keine Nachricht ans Telefon - um drei Uhr nachts soll
+  // davon nichts zu sehen sein.
+  int32_t cookie;
+  if (remind_launch_cookie(&cookie) && remind_cookie_neuplanen(cookie)) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "Zum Neuplanen geweckt - App geht wieder zu");
+    remind_schedule();
+    return;
+  }
+
   phone_init();
   phone_set_observer(prv_plan_changed);
+  wakeup_service_subscribe(prv_wakeup);
   main_window_push();
 
   // Hat uns ein Wecker geoeffnet, sofort erinnern. Das Fenster legt sich ueber

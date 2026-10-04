@@ -27,8 +27,8 @@ typedef struct {
 
 // Zustand eines zyklischen Präparats.
 //
-//   anchor_day  Tag, an dem Woche 1 der Einnahme begann (Tage seit Epoche)
-//   today       heutiger Tag (Tage seit Epoche)
+//   anchor_day  Tag, an dem Woche 1 der Einnahme begann (Kalendertag)
+//   today       heutiger Tag (Kalendertag, siehe kalender.h)
 //   weeks_on    Wochen Einnahme, mindestens 1
 //   weeks_off   Wochen Pause, 0 = nie Pause (dann immer CyclePhaseOn)
 //

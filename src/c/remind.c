@@ -1,4 +1,5 @@
 #include "remind.h"
+#include "kalender.h"
 #include "plan.h"
 
 #define MAX_WAKEUPS 8
@@ -7,12 +8,14 @@
 // verschoben - ausserhalb des Minutenbereichs 0..1439, damit ihn nichts
 // mit einem gewoehnlichen Wecker verwechselt.
 #define COOKIE_SNOOZE 2000
+// Der Wecker zum Neuplanen, ausserhalb beider Bereiche.
+#define COOKIE_NEUPLANEN 5000
 
 // Der offene Aufschub liegt im Persist: die App wird bei jedem Wecker neu
 // gestartet, und beim Start werden alle Wecker neu gestellt. Ohne Persist
 // fiele der Aufschub beim ersten Start dazwischen weg - genau das war der
 // Fehler, mit dem ein "spaeter" am Morgen manchmal nie wiederkam.
-// plan.c belegt 1..3, prefs.c 4.
+// plan.c belegt 1..3, 8 und 9, prefs.c 4.
 #define PERSIST_SNOOZE_AT     5
 #define PERSIST_SNOOZE_MINUTE 6
 #define PERSIST_SNOOZE_COUNT  7
@@ -48,20 +51,18 @@ void remind_snooze(int minute) {
 // Uhrzeit ergeben aber nur EINEN Wecker - das Erinnerungsfenster zeigt dann
 // beide. Bei E_RANGE trotzdem bis zu zweimal um je zwei Minuten nach hinten
 // schieben, wie in Drinktervall.
-static bool prv_schedule(time_t t, int32_t cookie) {
+// `melden`: verpasst die Uhr ihn (aus, Neustart), sagt sie es beim Start.
+static bool prv_schedule(time_t t, int32_t cookie, bool melden) {
   for (int attempt = 0; attempt < 3; attempt++) {
-    WakeupId id = wakeup_schedule(t + attempt * 120, cookie, true);
+    WakeupId id = wakeup_schedule(t + attempt * 120, cookie, melden);
     if (id >= 0) return true;
-    if (id != E_RANGE) return false;
+    if (id != E_RANGE) {
+      APP_LOG(APP_LOG_LEVEL_WARNING, "Wecker %d nicht gestellt: %d", (int)cookie, (int)id);
+      return false;
+    }
   }
+  APP_LOG(APP_LOG_LEVEL_WARNING, "Wecker %d nicht gestellt: kein Platz", (int)cookie);
   return false;
-}
-
-// Mitternacht des Tages, in dem `t` liegt. Ohne mktime, wie in den
-// Schwesterapps.
-static time_t prv_midnight(time_t t) {
-  struct tm *lt = localtime(&t);
-  return t - (lt->tm_hour * 3600 + lt->tm_min * 60 + lt->tm_sec);
 }
 
 /**
@@ -102,10 +103,10 @@ void remind_schedule(void) {
   const int snooze_minute = prv_snooze_minute();
   if (snooze_at > 0) {
     const bool gilt = snooze_at > now + LEAD_S && snooze_minute >= 0 &&
-        prv_midnight(snooze_at) == prv_midnight(now) &&
+        kalender_tag(snooze_at) == kalender_tag(now) &&
         prv_noch_offen(plan_today(), snooze_minute, true);
     if (gilt) {
-      if (prv_schedule(snooze_at, COOKIE_SNOOZE + snooze_minute)) n++;
+      if (prv_schedule(snooze_at, COOKIE_SNOOZE + snooze_minute, true)) n++;
     } else if (snooze_at <= now) {
       // Verstrichen, ohne dass die App ihn bekam (Uhr aus, Wecker verworfen):
       // dann ist er vorbei. Die Runde bleibt auf dem Heute-Schirm offen.
@@ -121,23 +122,25 @@ void remind_schedule(void) {
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
     const PlanItem *it = plan_item(i);
     if (!it || !plan_due_today(i) || plan_taken(i)) continue;
-    if (prv_schedule(now + 60, it->hour * 60 + it->minute)) n++;
+    if (prv_schedule(now + 60, it->hour * 60 + it->minute, true)) n++;
     break;
   }
   APP_LOG(APP_LOG_LEVEL_INFO, "Pruefbau: Wecker in einer Minute");
   return;
 #endif
 
-  // Zwei Tage vorausplanen. Mehr braucht es nicht: bei jedem Start wird neu
-  // gestellt, und acht Wecker reichen ohnehin nicht weiter.
-  const time_t midnight = prv_midnight(now);
-  for (int day = 0; day < 2 && n < MAX_WAKEUPS; day++) {
-    const int32_t the_day = (int32_t)((midnight + day * 86400) / 86400);
+  // So weit voraus, bis die Erinnerungen gefunden sind - ein Platz bleibt
+  // dem Wecker zum Neuplanen. Gerechnet in Kalendertagen; die Uhrzeit je Tag
+  // kommt aus kalender_zeit_am, damit ein Wecker nach einer Umstellung nicht
+  // eine Stunde daneben liegt (Audit M2).
+  const int32_t heute = plan_today();
+  for (int day = 0; day < SC_VORAUS_TAGE && n < MAX_WAKEUPS - 1; day++) {
+    const int32_t the_day = heute + day;
 
     // Je Minute des Tages hoechstens ein Wecker, auch wenn mehrere Praeparate
     // darauf fallen. Deshalb aufsteigend durchgehen und Doppelte ueberspringen.
     int last_minute = -1;
-    for (int pass = 0; pass < SC_MAX_ITEMS && n < MAX_WAKEUPS; pass++) {
+    for (int pass = 0; pass < SC_MAX_ITEMS && n < MAX_WAKEUPS - 1; pass++) {
       int best = -1;
       for (int i = 0; i < SC_MAX_ITEMS; i++) {
         const PlanItem *it = plan_item(i);
@@ -156,19 +159,22 @@ void remind_schedule(void) {
       // Heute schon erledigt? Dann kein Wecker. Siehe prv_noch_offen.
       if (!prv_noch_offen(the_day, best, day == 0)) continue;
 
-      const time_t at = midnight + day * 86400 + (time_t)best * 60;
+      const time_t at = kalender_zeit_am(the_day, best);
       if (at <= now + LEAD_S) continue;     // heute schon vorbei
-      if (prv_schedule(at, best)) n++;
+      if (prv_schedule(at, best, true)) n++;
     }
   }
+
+  // Zuletzt der Wecker zum Neuplanen, auf den letzten Platz: die naechste
+  // SC_NEUPLANEN_MINUTE, die noch kommt. Die Erinnerungen behalten so ihre
+  // Zeiten; kaeme er einer in die Quere, weicht er aus (prv_schedule).
+  time_t neu = kalender_zeit_am(heute, SC_NEUPLANEN_MINUTE);
+  if (neu <= now + LEAD_S) neu = kalender_zeit_am(heute + 1, SC_NEUPLANEN_MINUTE);
+  if (prv_schedule(neu, COOKIE_NEUPLANEN, false)) n++;
   APP_LOG(APP_LOG_LEVEL_INFO, "%d Wecker gestellt", n);
 }
 
-int remind_launch_minute(void) {
-  if (launch_reason() != APP_LAUNCH_WAKEUP) return -1;
-  WakeupId id;
-  int32_t cookie;
-  if (!wakeup_get_launch_event(&id, &cookie)) return -1;
+int remind_cookie_minute(int32_t cookie) {
   if (cookie >= COOKIE_SNOOZE && cookie < COOKIE_SNOOZE + 1440) {
     // Ein Aufschub: die Erinnerung gilt der aufgeschobenen Runde, nicht
     // allem, was gerade offen ist.
@@ -176,4 +182,20 @@ int remind_launch_minute(void) {
   }
   if (cookie < 0 || cookie > 1439) return -1;
   return (int)cookie;
+}
+
+bool remind_cookie_neuplanen(int32_t cookie) {
+  return cookie == COOKIE_NEUPLANEN;
+}
+
+bool remind_launch_cookie(int32_t *cookie) {
+  if (launch_reason() != APP_LAUNCH_WAKEUP) return false;
+  WakeupId id;
+  return wakeup_get_launch_event(&id, cookie);
+}
+
+int remind_launch_minute(void) {
+  int32_t cookie;
+  if (!remind_launch_cookie(&cookie)) return -1;
+  return remind_cookie_minute(cookie);
 }

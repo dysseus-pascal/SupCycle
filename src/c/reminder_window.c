@@ -26,6 +26,9 @@
 
 #define VIBE_PULSES 3
 #define VIBE_GAP_MS 20000
+// So lange haelt das Fenster die App nach dem Abhaken hoechstens offen, bis
+// das Telefon die Meldung bestaetigt hat - wie in Drinktervall.
+#define WARTE_TELEFON_MS 5000
 
 static Window *s_window;
 static Layer *s_canvas;
@@ -36,6 +39,7 @@ static AppTimer *s_vibe;
 static int s_vibes_left;
 static int s_minute;          // Uhrzeit der Erinnerung, -1 = "was offen ist"
 static bool s_playing;
+static bool s_geht;           // abgehakt: wartet nur noch auf das Telefon
 
 // Gehört dieses Präparat zu dieser Erinnerung? Bei -1 (nach einem Aufschub
 // oder ohne Uhrzeit) zählt alles, was heute noch offen ist.
@@ -140,13 +144,21 @@ static void prv_close(void) {
   window_stack_pop_all(false);
 }
 
+// ERST GEHEN, WENN DAS TELEFON DEN HAKEN HAT. Bis 0.15.0 schloss die App
+// gleich nach dem Abschicken (ohne Animation) oder nach 1,4 s (mit), und die
+// Uhr verwarf, was noch im Postausgang lag (Audit M3). Jetzt hoechstens
+// WARTE_TELEFON_MS laenger; ohne Verbindung geht es sofort.
+static void prv_close_nach_telefon(void) {
+  phone_when_sent(prv_close, WARTE_TELEFON_MS);
+}
+
 static void prv_fx_done(void) {
-  s_playing = false;
-  prv_close();
+  // s_playing bleibt: bis zum Schliessen gehoert der Schirm der Animation.
+  prv_close_nach_telefon();
 }
 
 static void prv_take(ClickRecognizerRef recognizer, void *context) {
-  if (s_playing) return;
+  if (s_playing || s_geht) return;
   prv_stop_vibes();
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
     if (prv_in_batch(i)) plan_set_taken(i, true);
@@ -156,10 +168,11 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
   remind_snooze_clear();
   remind_schedule();
   phone_send_today();     // Pins als erledigt markieren
+  s_geht = true;
 
   // Abgeschaltete Animation heisst NICHT, dass das Fenster stehen bleibt:
-  // prv_fx_done ist der Weg hinaus, also hier direkt gehen.
-  if (!prefs_fx()) { prv_close(); return; }
+  // prv_fx_done ist der Weg hinaus, also hier direkt dorthin.
+  if (!prefs_fx()) { prv_close_nach_telefon(); return; }
 
   s_playing = true;
   layer_mark_dirty(s_canvas);
@@ -169,7 +182,7 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
                     (int16_t)(b.size.w * 34 / 100), prv_fx_done)) {
     // Kam nicht zustande: dann eben direkt hinaus, statt auf ein Ende zu
     // warten, das nicht kommt.
-    prv_close();
+    prv_close_nach_telefon();
   }
 }
 
@@ -178,7 +191,7 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
 // nicht nehmen will, will auch nicht die Liste sehen; die kommt, wenn man
 // sie selbst oeffnet, und dort laesst sich nachholen, was liegen blieb.
 static void prv_dismiss(ClickRecognizerRef recognizer, void *context) {
-  if (s_playing) return;
+  if (s_playing || s_geht) return;
   prv_stop_vibes();
   remind_snooze_clear();
   remind_schedule();
@@ -186,7 +199,7 @@ static void prv_dismiss(ClickRecognizerRef recognizer, void *context) {
 }
 
 static void prv_later(ClickRecognizerRef recognizer, void *context) {
-  if (s_playing) return;
+  if (s_playing || s_geht) return;
   if (!remind_snooze_left(s_minute)) {
     // Dreimal "spaeter" heisst "heute nicht": die Runde verfaellt.
     prv_dismiss(recognizer, context);
@@ -257,6 +270,7 @@ bool reminder_window_push(int minute) {
   if (prv_batch_count() == 0) return false;  // nichts offen: gar nicht erst zeigen
 
   s_playing = false;
+  s_geht = false;
   s_window = window_create();
   window_set_background_color(s_window, SC_COLOR_BG);
   window_set_window_handlers(s_window, (WindowHandlers) {
