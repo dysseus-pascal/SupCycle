@@ -23,11 +23,15 @@
 //   - BESTAETIGEN: hoechstens 300 s Abweichung und derselbe Tag.
 //   - Ein Haken OHNE BRAUCHBARE ZEIT (vor 0.14.0 gesetzt, oder als die Uhr
 //     noch im Jahr 2000 stand) faellt wie jeder andere mit einem neuen Tag.
+//   - DIE PERSIST-FAECHER: plan.c, prefs.c und remind.c teilen einen
+//     Zahlenraum. Belegt sind nur 1 bis 10, und keines von zweien - das
+//     doppelt belegte Fach 4 war der Fehler von 0.14.0.
 //
 // Exitcode 0 = alles wie zugesagt.
 #include <pebble.h>
 #include "plan.h"
 #include "prefs.h"
+#include "remind.h"
 
 time_t stub_jetzt;
 
@@ -58,6 +62,8 @@ static void zeiten(uint8_t *aus, const uint32_t *t) {
 #define FACH_TAG 2
 #define FACH_HAKEN 3
 #define FACH_ZEITEN 8
+#define FACH_PLAN 1
+#define FACH_TAGE 9
 // Fach 4 gehoert prefs.c (Animation); 0.14.0 legte die Zeiten auch dorthin.
 #define FACH_FX 4
 #define FACH_ZEITEN_014 4
@@ -365,6 +371,55 @@ int main(void) {
   pruefe("Uhr im Jahr 2000: nicht fraglich", !plan_uhr_fraglich());
   pruefe("Uhr im Jahr 2000: auch passende Telefonzeit gibt keinen Tag",
          !plan_uhr_bestaetigt(946728000) && persist_read_int(FACH_TAG) == TAG_0310);
+
+  printf("\nPersist-Faecher: nur 1 bis 10, keines doppelt\n");
+  {
+    // Ein Lauf durch alles, was schreibt. Vorher stand 0.15.0 auf der Uhr:
+    // ein Plan und der gemerkte Tag, aber kein Fach 9 - der Start stellt um.
+    attrappe_persist_leeren();
+    stub_jetzt = MORGEN;
+    uint8_t alt[SC_MAX_ITEMS * SC_ITEM_BYTES];
+    memset(alt, 0, sizeof(alt));
+    memcpy(alt, "Zink", 4);
+    alt[16] = 8; alt[18] = 1; alt[19] = 1;
+    for (int b = 0; b < 4; b++) alt[22 + b] = (uint8_t)((uint32_t)(TAG_0310 - 10) >> (8 * b));
+    persist_write_data(FACH_PLAN, alt, sizeof(alt));
+    persist_write_int(FACH_TAG, TAG_0310);
+    plan_init();                                    // Umstellung: Fach 9
+    prefs_init();
+    prefs_set_fx(false);                            // Fach 4
+    plan_set_taken(0, true);                        // Faecher 3 und 8
+    remind_snooze(480, plan_today());               // Faecher 5, 6, 7, 10
+    stub_jetzt += SC_SNOOZE_MIN * 60;               // er klopft, die App plant neu
+    remind_schedule();
+    remind_snooze(480, plan_today());               // zweiter Aufschub
+    bool nur = attrappe_persist_daneben() == 0, alle = true, eine_laenge = true;
+    char welche[64] = "";
+    for (int k = 0; k < attrappe_persist_faecher(); k++) {
+      const bool soll = k >= 1 && k <= 10;
+      if (attrappe_persist_geschrieben((uint32_t)k) && !soll) {
+        nur = false;
+        snprintf(welche + strlen(welche), sizeof(welche) - strlen(welche), " %d", k);
+      }
+      if (soll && !attrappe_persist_geschrieben((uint32_t)k)) alle = false;
+      if (attrappe_persist_laenge_wechselte((uint32_t)k)) eine_laenge = false;
+    }
+    if (!nur) printf("           auch geschrieben:%s\n", welche);
+    pruefe("nur die Faecher 1 bis 10 sind belegt", nur);
+    pruefe("der Lauf schrieb jedes davon", alle);
+    pruefe("jedes Fach mit nur einer Laenge", eine_laenge);
+    // Jeder liest nach einem Neustart, was er geschrieben hat - teilten sich
+    // zwei ein Fach, laese einer den Wert des anderen.
+    plan_init();
+    prefs_init();
+    pruefe("Neustart: die Animation bleibt aus", !prefs_fx());
+    pruefe("Neustart: der Haken bleibt mit seiner Zeit", plan_taken(0) && plan_taken_at(0) == MORGEN);
+    pruefe("Neustart: der Plan bleibt", plan_count() == 1 && strcmp(plan_item(0)->name, "Zink") == 0 &&
+                                        plan_item(0)->anchor_day == TAG_0310 - 10);
+    pruefe("Neustart: der Aufschub zaehlt 2", remind_snooze_count(480) == 2);
+    pruefe("Neustart: Fach 9 sagt Kalendertage", persist_read_int(FACH_TAGE) == 2);
+    pruefe("Neustart: Fach 2 ist der gemerkte Tag", persist_read_int(FACH_TAG) == TAG_0310);
+  }
 
   printf("\nMitternacht knapp\n");
   frisch(MITTERNACHT + TAG - 1);                    // 03.10. 23:59:59

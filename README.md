@@ -655,7 +655,10 @@ Telefon steht „aus“). Umgekehrt ersetzte ein
 Umschalten der Animation die sechs Zeiten durch eine Zahl. Jetzt holt die Uhr
 einen Zeitenblock aus Fach 4 einmal nach Fach 8 und räumt Fach 4; die
 Animation gilt dabei als an, bis man sie wieder umstellt. Belegt sind: 1 bis 3,
-8 und 9 `plan.c`, 4 `prefs.c`, 5 bis 7 `remind.c`.
+8 und 9 `plan.c`, 4 `prefs.c`, 5 bis 7 und 10 `remind.c`. `plan_host_test`
+prüft nach einem Lauf mit Umstellung, Haken, Animation und Aufschub, dass nur
+diese zehn Fächer beschrieben sind, jedes mit einer Länge, und dass nach einem
+Neustart jede Datei ihren eigenen Wert liest.
 
 ## Health Connect (über Boulder)
 

@@ -41,6 +41,12 @@ int persist_delete(uint32_t key);
 int persist_get_size(uint32_t key);   //< Byte im Fach, sonst E_DOES_NOT_EXIST
 #define E_DOES_NOT_EXIST (-9)    // wie im SDK
 void attrappe_persist_leeren(void);
+// Die Spur seit dem letzten Leeren: je Fach je geschrieben, mit wechselnder
+// Laenge, und Schreibversuche hinter dem letzten Fach der Attrappe.
+bool attrappe_persist_geschrieben(uint32_t key);
+bool attrappe_persist_laenge_wechselte(uint32_t key);
+int attrappe_persist_daneben(void);
+int attrappe_persist_faecher(void);
 
 // --- Dictionary im Format der Pebble: 1 Byte Anzahl, je Tupel 4 Byte
 // Schluessel, 1 Byte Typ, 2 Byte Laenge, dann die Daten. So zaehlt auch der
