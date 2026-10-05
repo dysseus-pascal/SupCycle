@@ -47,7 +47,7 @@ static void prv_wakeup(WakeupId id, int32_t cookie) {
   // Steht schon eine Erinnerung, kommt die Runde dort dazu und es vibriert
   // neu; nichts offen heisst nichts zu zeigen. Die App bleibt in beiden
   // Faellen offen - man benutzt sie gerade.
-  if (minute != -1) reminder_window_push(minute);
+  if (minute != -1) reminder_window_push(cookie);
   remind_schedule();
 }
 
@@ -70,7 +70,8 @@ static void prv_init(void) {
   // phone_init geht keine Nachricht ans Telefon - um drei Uhr nachts soll
   // davon nichts zu sehen sein.
   int32_t cookie;
-  if (remind_launch_cookie(&cookie) && remind_cookie_neuplanen(cookie)) {
+  const bool geweckt = remind_launch_cookie(&cookie);
+  if (geweckt && remind_cookie_neuplanen(cookie)) {
     APP_LOG(APP_LOG_LEVEL_INFO, "Zum Neuplanen geweckt - App geht wieder zu");
     remind_schedule();
     return;
@@ -83,10 +84,10 @@ static void prv_init(void) {
 
   // Hat uns ein Wecker geoeffnet, sofort erinnern. Das Fenster legt sich ueber
   // den Hauptschirm; bei einem Aufschub gilt es der aufgeschobenen Runde.
-  const int minute = remind_launch_minute();
+  const int minute = geweckt ? remind_cookie_minute(cookie) : -1;
   if (minute != -1) {
     APP_LOG(APP_LOG_LEVEL_INFO, "Vom Wecker geoeffnet (Minute %d)", minute);
-    if (!reminder_window_push(minute)) {
+    if (!reminder_window_push(cookie)) {
       // NICHTS ZU ZEIGEN, ALSO NICHTS ZU OEFFNEN. Ohne diesen Ausgang blieb
       // die App auf dem Heute-Schirm stehen - und dort steht Abgehaktes
       // durchgestrichen mit. Wer die Runde schon von Hand abgehakt hatte, sah

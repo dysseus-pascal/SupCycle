@@ -108,6 +108,10 @@ struct ActionBarLayer { ClickConfigProvider tasten; Window *fenster; };
 #define STAPEL_MAX 8
 static Window *s_stapel[STAPEL_MAX];
 static int s_stapel_zahl;
+// Beim Ende der App nimmt pebbleos neue Fenster nicht mehr an
+// (window_stack_lock_push in app.c).
+static bool s_stapel_gesperrt;
+static int s_fenster_beim_ende = -1;
 
 Window *window_create(void) {
   Window *w = calloc(1, sizeof(Window));
@@ -126,7 +130,7 @@ Layer *window_get_root_layer(const Window *window) { return window->wurzel; }
 
 void window_stack_push(Window *window, bool animated) {
   (void)animated;
-  if (s_stapel_zahl >= STAPEL_MAX) return;
+  if (s_stapel_gesperrt || s_stapel_zahl >= STAPEL_MAX) return;
   Window *vorher = s_stapel_zahl ? s_stapel[s_stapel_zahl - 1] : NULL;
   s_stapel[s_stapel_zahl++] = window;
   if (!window->geladen) {
@@ -285,12 +289,24 @@ const char *attrappe_glance(void) { return s_glance; }
 void (*attrappe_app_laeuft)(void);
 void app_event_loop(void) {
   // pebbleos app.c: ohne Fenster endet die App, bevor ein Ereignis kommt.
-  if (s_stapel_zahl == 0) return;
+  if (s_stapel_zahl == 0) { s_fenster_beim_ende = 0; return; }
   if (attrappe_app_laeuft) attrappe_app_laeuft();
+  // Danach ist die App verlassen - von selbst oder weil die Uhr sie beendet
+  // (langes Zurueck, eine andere App). pebbleos app.c prv_handle_deinit_event
+  // sperrt dann neue Fenster und nimmt alle uebrigen ohne Animation weg,
+  // MIT unload. Ohne das blieben die statischen Zeiger der Fenster ueber den
+  // naechsten Start im selben Testprozess stehen.
+  s_fenster_beim_ende = s_stapel_zahl;
+  s_stapel_gesperrt = true;
+  window_stack_pop_all(false);
+  s_stapel_gesperrt = false;
 }
+int attrappe_fenster_beim_ende(void) { return s_fenster_beim_ende; }
 
 void attrappe_ui_leeren(void) {
   s_stapel_zahl = 0;
+  s_stapel_gesperrt = false;
+  s_fenster_beim_ende = -1;
   s_vibrationen = 0;
   s_texte[0] = 0;
   s_glance[0] = 0;

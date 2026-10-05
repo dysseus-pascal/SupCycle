@@ -66,12 +66,11 @@ int remind_cookie_minute(int32_t cookie);
 // Ist es der Wecker zum Neuplanen?
 bool remind_cookie_neuplanen(int32_t cookie);
 
+// Ist es ein Aufschub?
+bool remind_cookie_aufschub(int32_t cookie);
+
 // Hat ein Wecker die App gestartet? Dann true und sein Cookie in `cookie`.
 bool remind_launch_cookie(int32_t *cookie);
-
-// Wurde die App von einem Erinnerungs-Wecker gestartet? Liefert dann
-// remind_cookie_minute seines Cookies, sonst -1.
-int remind_launch_minute(void);
 
 // --- Der Aufschub ---
 //
@@ -92,21 +91,26 @@ int remind_launch_minute(void);
 #define SC_SNOOZE_MIN 15
 #define SC_SNOOZE_MAX 3
 
-// Der Kalendertag der Runde zu dieser Uhrzeit, an die jetzt erinnert wird:
-// heute - oder gestern, solange ein Aufschub die Runde von gestern ueber
-// Mitternacht traegt und ihre Uhrzeit heute noch nicht wieder da ist.
-int32_t remind_runden_tag(int minute);
+// Der Kalendertag der Runde, an die der Wecker mit diesem Cookie erinnert.
+// Ein gewoehnlicher Wecker gilt IMMER der Runde von heute - auch wenn er
+// nach einer Reise nach Westen Stunden vor ihrer Uhrzeit klopft. Nur ein
+// Aufschub kann der Runde von gestern gelten: dann der Tag, den er sich
+// gemerkt hat. Bis 0.15.0 wurde das aus der Uhrzeit geschlossen, und ein
+// liegen gebliebener Aufschub machte die heutige Runde zur gestrigen:
+// "Genommen" hakte nichts ab, und sie klopfte zur Ortszeit nochmal.
+int32_t remind_runden_tag(int32_t cookie);
 
 // Die Runde zu dieser Uhrzeit vom Kalendertag `tag` in SC_SNOOZE_MIN Minuten
 // nochmal. Zaehlt mit; ein Aufschub zu einer anderen Runde ersetzt den alten
 // und zaehlt von vorn. Der Zaehler ueberlebt das Klopfen des Aufschubs -
 // sonst waere jeder Aufschub der erste. Von vorn zaehlt erst eine andere
-// Runde oder ein neuer Tag; geloescht wird er beim Abhaken und Wegdruecken.
+// Runde oder ein neuer Tag; geloescht wird er beim Abhaken und Wegdruecken,
+// und sobald seine Runde heute erledigt ist (remind_schedule).
 void remind_snooze(int minute, int32_t tag);
-// Darf diese Runde (vom remind_runden_tag) noch aufgeschoben werden?
-bool remind_snooze_left(int minute);
-// Wie oft diese Runde (vom remind_runden_tag) schon aufgeschoben wurde.
-int remind_snooze_count(int minute);
+// Darf die Runde `minute` vom Kalendertag `tag` noch aufgeschoben werden?
+bool remind_snooze_left(int minute, int32_t tag);
+// Wie oft die Runde `minute` vom Kalendertag `tag` schon aufgeschoben wurde.
+int remind_snooze_count(int minute, int32_t tag);
 // Den Aufschub dieser Runde vergessen - nach dem Nehmen oder dem
 // Wegdruecken. Der Aufschub einer anderen Runde bleibt; -1 vergisst jeden.
 void remind_snooze_clear(int minute);

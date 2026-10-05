@@ -44,7 +44,7 @@ static AppTimer *s_vibe;
 static int s_vibes_left;
 
 // Eine Runde: ihre Uhrzeit (Minuten seit Mitternacht, -1 = "was offen ist")
-// und ihr Kalendertag (remind_runden_tag): heute, oder gestern fuer einen
+// und ihr Kalendertag (remind_runden_tag): heute, oder gestern nur fuer einen
 // Aufschub, der ueber Mitternacht ging. Beim Erscheinen festgelegt - eine
 // Erinnerung von 23:50, die bis nach Mitternacht offen steht, bleibt die
 // Runde von gestern.
@@ -200,7 +200,7 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
 
   // Der wievielte Aufschub - und ob es der letzte war. Wer es sieht, weiss,
   // dass "spaeter" beim naechsten Mal "heute nicht" heisst.
-  const int count = remind_snooze_count(minute);
+  const int count = remind_snooze_count(minute, prv_neueste()->tag);
   if (count > 0) {
     char note[24];
     if (count >= SC_SNOOZE_MAX) snprintf(note, sizeof(note), "%s", S(STR_SNOOZE_LAST));
@@ -222,7 +222,7 @@ static void prv_close(void) {
 static void prv_klopfen(void) {
   // Kein Aufschub mehr uebrig: dann steht dort auch kein Zeichen dafuer. Ein
   // Zeichen fuer eine Taste, die etwas anderes tut, waere eine Luege.
-  if (s_icon_later && remind_snooze_left(prv_neueste()->minute)) {
+  if (s_icon_later && remind_snooze_left(prv_neueste()->minute, prv_neueste()->tag)) {
     action_bar_layer_set_icon(s_bar, BUTTON_ID_DOWN, s_icon_later);
   } else {
     action_bar_layer_clear_icon(s_bar, BUTTON_ID_DOWN);
@@ -332,7 +332,7 @@ static void prv_dismiss(ClickRecognizerRef recognizer, void *context) {
 static void prv_later(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
   const Runde neueste = *prv_neueste();
-  if (!remind_snooze_left(neueste.minute)) {
+  if (!remind_snooze_left(neueste.minute, neueste.tag)) {
     // Dreimal "spaeter" heisst "heute nicht": die Runde verfaellt.
     prv_dismiss(recognizer, context);
     return;
@@ -388,8 +388,9 @@ static void prv_unload(Window *window) {
   s_danach_zahl = 0;
 }
 
-bool reminder_window_push(int minute) {
-  const int32_t tag = remind_runden_tag(minute);
+bool reminder_window_push(int32_t cookie) {
+  const int minute = remind_cookie_minute(cookie);
+  const int32_t tag = remind_runden_tag(cookie);
   if (s_window) {
     // Das Fenster steht noch. Die neue Runde kommt dazu, wenn es zu ihr
     // etwas zu nehmen gibt.

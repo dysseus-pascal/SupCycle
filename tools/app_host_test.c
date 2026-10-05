@@ -22,6 +22,9 @@
 //   - DER AUFSCHUB HAELT: von Hand kurz vor ihm geoeffnet, ueber Mitternacht
 //     (dann gilt er der Runde von gestern und hakt die von heute nicht ab),
 //     und wenn dazwischen eine andere Runde abgehakt oder weggedrueckt wird.
+//   - NUR DER AUFSCHUB GILT GESTERN: ein gewoehnlicher Wecker ist immer die
+//     Runde von heute, auch nach einer Reise nach Westen neben einem liegen
+//     gebliebenen Aufschub derselben Uhrzeit.
 //
 // Exitcode 0 = alles wie zugesagt.
 #define _DEFAULT_SOURCE
@@ -346,7 +349,7 @@ static void abschnitt_aufschub_start(void) {
       stub_jetzt = a->zeit;
       cookie = a->cookie;
     } else {
-      pruefe("  das vierte \"spaeter\" laesst die Runde verfallen", a == NULL && attrappe_fenster_zahl() == 0);
+      pruefe("  das vierte \"spaeter\" laesst die Runde verfallen", a == NULL && attrappe_fenster_beim_ende() == 0);
     }
   }
   pruefe("sie bleibt offen fuer den Heute-Schirm", !plan_taken(0) && !plan_taken(1));
@@ -456,7 +459,7 @@ static void abschnitt_mitternacht(void) {
   pruefe("00:20: Aufschub 2 von 3, genommen", s_lief == 1 && vermerk("Aufschub 2 von 3"));
   pruefe("  hakt die Runde 23:50 von HEUTE nicht ab", !plan_taken(3));
   pruefe("  sie klopft heute um 23:50", wecker_um(1430, 2026, 7, 15, 23, 50));
-  pruefe("  und der Aufschub ist vorbei", aufschub_fuer(1430) == NULL && remind_snooze_count(1430) == 0);
+  pruefe("  und der Aufschub ist vorbei", aufschub_fuer(1430) == NULL && remind_snooze_count(1430, heute) == 0);
 }
 
 // Alle 2 Tage, gestern dran, heute nicht: der Aufschub von gestern zeigt sie.
@@ -474,7 +477,7 @@ static void abschnitt_mitternacht_zweitage(void) {
   starten(APP_LAUNCH_WAKEUP, a->cookie, zurueck_druecken);
   pruefe("00:05: die Runde von gestern kommt, obwohl Mg heute nicht dran ist",
          s_lief == 1 && strstr(s_gesehen, "Mg") && vermerk("Aufschub 1 von 3"));
-  pruefe("  weggedrueckt: kein Aufschub mehr", aufschub_fuer(1430) == NULL && remind_snooze_count(1430) == 0);
+  pruefe("  weggedrueckt: kein Aufschub mehr", aufschub_fuer(1430) == NULL && remind_snooze_count(1430, heute) == 0);
 }
 
 // Zink 08:00 aufgeschoben, Maca 08:10 dazwischen genommen oder weggedrueckt.
@@ -507,6 +510,45 @@ static void abschnitt_andere_runde_weg(void) {
   andere_runde(zurueck_druecken, "weggedrueckt");
 }
 
+// --- Westreise mit liegen gebliebenem Aufschub ---
+// 08:00 aufgeschoben, um 08:15 klopft der Aufschub, die Erinnerung bleibt
+// unbeantwortet (App ueber langes Zurueck verlassen): Minute, Zaehler und Tag
+// des Aufschubs bleiben stehen. Am naechsten Tag in New York klopft der
+// Wecker 08:00 Zuerich um 02:00 Ortszeit - das ist die Runde von HEUTE.
+static void nichts_druecken(void) {
+  s_lief++;
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+}
+static void abschnitt_westreise(void) {
+  printf("\nWestreise: ein gewoehnlicher Wecker gilt der Runde von heute\n");
+  setenv("TZ", "Europe/Zurich", 1);
+  tzset();
+  uhr(datum_tag(2026, 7, 14), false);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0);
+  starten(APP_LAUNCH_WAKEUP, 480, spaeter_druecken);
+  const AttrappeWecker *a = aufschub_fuer(480);
+  if (!a) { pruefe("der Aufschub steht", false); return; }
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, nichts_druecken);
+  pruefe("08:15: der Aufschub klopft und bleibt unbeantwortet", s_lief == 1 && vermerk("Aufschub 1 von 3"));
+  stub_jetzt = ortszeit(2026, 7, 14, 12, 30);
+  starten(APP_LAUNCH_WAKEUP, 750, genommen_druecken);
+  pruefe("12:30: Maca genommen, Zink und D3 offen", plan_taken(2) && !plan_taken(0) && !plan_taken(1));
+  // Der Wecker fuer morgen 08:00 Zuerich, dann der Flug.
+  const time_t morgen_acht = ortszeit(2026, 7, 15, 8, 0);
+  pruefe("der Wecker 15.07. 08:00 Zuerich steht", wecker_um(480, 2026, 7, 15, 8, 0));
+  setenv("TZ", "America/New_York", 1);
+  tzset();
+  stub_jetzt = morgen_acht;                 // 02:00 in New York
+  starten(APP_LAUNCH_WAKEUP, 480, genommen_druecken);
+  pruefe("02:00 New York: die Runde 08:00 von heute, ohne Aufschub-Vermerk",
+         s_lief == 1 && strstr(s_gesehen, "08:00") && strstr(s_gesehen, "Zink") &&
+         strstr(s_gesehen, "D3") && vermerk(NULL));
+  pruefe("  \"genommen\" hakt Zink und D3 heute ab", plan_taken(0) && plan_taken(1));
+  pruefe("  und um 08:00 Ortszeit klopft sie nicht nochmal", !wecker_um(480, 2026, 7, 15, 8, 0));
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
@@ -515,6 +557,7 @@ static void (*const ABSCHNITTE[])(void) = {
   abschnitt_genommen_frist, abschnitt_genommen_offline, abschnitt_kur,
   abschnitt_aufschub_start, abschnitt_aufschub_offen, abschnitt_kurz_davor, abschnitt_mitternacht,
   abschnitt_mitternacht_zweitage,  abschnitt_andere_runde_genommen, abschnitt_andere_runde_weg,
+  abschnitt_westreise,
 };
 
 int main(void) {

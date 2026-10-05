@@ -465,6 +465,14 @@ die Haken gelten für heute, und der von heute gehört der Runde 23:50 von
 heute — sie soll am Abend wieder klopfen. Wurde die Runde vor Mitternacht auf
 dem Heute-Schirm abgehakt, ist ihr Aufschub vorbei.
 
+**Gestern gilt nur ein Aufschub.** Ein gewöhnlicher Wecker ist immer die Runde
+von heute — auch nach einer Reise nach Westen, wenn der Wecker von 08:00
+Zürich in New York um 02:00 klopft. Bis 0.15.0 wurde das aus der Uhrzeit
+geschlossen: lag noch ein Aufschub derselben Runde vom Vortag herum, galt die
+heutige als die von gestern, „Genommen" hakte nichts ab, und um 08:00 Ortszeit
+klopfte sie nochmal. Ist eine Runde heute erledigt, ist ihr Aufschub ganz
+vorbei, samt Zähler und Tag.
+
 **Wegdrücken schliesst die App.** Zurück auf der Erinnerung heisst „nicht jetzt
 und nicht nachfragen": kein Aufschub, keine weitere Erinnerung zu dieser Runde,
 und die App geht zu — nicht auf den Heute-Schirm. Was liegen blieb, steht dort

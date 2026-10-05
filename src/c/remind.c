@@ -45,25 +45,25 @@ static int prv_zahl(int minute, int32_t tag) {
   return persist_exists(PERSIST_SNOOZE_COUNT) ? persist_read_int(PERSIST_SNOOZE_COUNT) : 0;
 }
 
-int32_t remind_runden_tag(int minute) {
-  const int32_t heute = plan_today();
-  // Gestern ist es nur, wenn ein Aufschub die Runde ueber Mitternacht trug
-  // und ihre Uhrzeit heute noch nicht wieder da ist. NICHT allein nach der
-  // Uhrzeit: nach einer Reise nach Westen klopft ein Wecker eine Stunde vor
-  // seiner Runde, und die ist trotzdem die von heute.
+int32_t remind_runden_tag(int32_t cookie) {
+  // Gestern ist es nur bei einem Aufschub, der sich den Tag seiner Runde
+  // gemerkt hat. NICHT nach der Uhrzeit: nach einer Reise nach Westen klopft
+  // der Wecker von 08:00 um 02:00 Ortszeit, und ein liegen gebliebener
+  // Aufschub derselben Uhrzeit vom Vortag machte daraus die Runde von
+  // gestern - "Genommen" hakte nichts ab (Review sc-r2).
   int32_t gemerkt;
-  if (minute >= 0 && prv_snooze_minute() == minute && prv_snooze_tag(&gemerkt) &&
-      gemerkt == heute - 1 && kalender_zeit_am(heute, minute) > time(NULL)) {
+  if (remind_cookie_aufschub(cookie) && prv_snooze_minute() == remind_cookie_minute(cookie) &&
+      prv_snooze_tag(&gemerkt)) {
     return gemerkt;
   }
-  return heute;
+  return plan_today();
 }
 
-int remind_snooze_count(int minute) {
-  return prv_zahl(minute, remind_runden_tag(minute));
+int remind_snooze_count(int minute, int32_t tag) {
+  return prv_zahl(minute, tag);
 }
-bool remind_snooze_left(int minute) {
-  return remind_snooze_count(minute) < SC_SNOOZE_MAX;
+bool remind_snooze_left(int minute, int32_t tag) {
+  return remind_snooze_count(minute, tag) < SC_SNOOZE_MAX;
 }
 void remind_snooze_clear(int minute) {
   // NUR DER AUFSCHUB DIESER RUNDE. Bis 0.15.0 loeschte jedes Abhaken und
@@ -91,10 +91,12 @@ void remind_snooze(int minute, int32_t tag) {
 }
 
 // Der Tag der Runde, der der gemerkte Aufschub gilt. Ohne gemerkten Tag
-// (0.15.0) der letzte Tag, an dem ihre Uhrzeit vor dem Klopfen schon da war.
+// (0.15.0) der letzte Tag, an dem ihre Uhrzeit vor dem Klopfen schon da war;
+// ohne beides heute.
 static int32_t prv_snooze_runde(time_t snooze_at, int minute) {
   int32_t tag;
   if (prv_snooze_tag(&tag)) return tag;
+  if (snooze_at <= 0) return plan_today();
   tag = kalender_tag(snooze_at);
   if (minute >= 0 && kalender_zeit_am(tag, minute) > snooze_at) tag--;
   return tag;
@@ -182,34 +184,36 @@ void remind_schedule(void) {
   time_t erste = 0;
   const time_t snooze_at = prv_snooze_at();
   const int snooze_minute = prv_snooze_minute();
-  if (snooze_at > 0) {
+  if (snooze_minute >= 0) {
     const int32_t heute = plan_today();
     const int32_t runde = prv_snooze_runde(snooze_at, snooze_minute);
     const int32_t klopft = kalender_tag(snooze_at);
     const bool gestern = runde == heute - 1;
     // Die Haken von gestern kennt die Uhr nach Mitternacht nicht mehr
     // (plan.c). Ob die Runde von gestern noch offen ist, steht deshalb schon
-    // vor Mitternacht fest - siehe den letzten Zweig.
-    const bool offen = snooze_minute >= 0 && prv_noch_offen(runde, snooze_minute, !gestern);
+    // vor Mitternacht fest - siehe den ersten Zweig.
+    const bool offen = prv_noch_offen(runde, snooze_minute, !gestern);
     const bool gilt = snooze_at > now && offen && (runde == heute || gestern) &&
         (klopft == runde || klopft == runde + 1);
-    if (gilt) {
+    if (runde == heute && !offen) {
+      // HEUTE ERLEDIGT (etwa auf dem Heute-Schirm): der ganze Aufschub ist
+      // vorbei, nicht nur sein Wecker. Bis sc-r2 blieben Minute, Zaehler und
+      // Tag stehen. Klopfte er erst nach Mitternacht, wuesste die Uhr nicht
+      // mehr, dass die Runde genommen ist, und erinnerte an Erledigtes.
+      APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d erledigt - Aufschub vorbei", snooze_minute);
+      remind_snooze_clear(-1);
+    } else if (gilt) {
       const time_t wann = prv_fruehestens(snooze_at, now);
       if (prv_schedule(wann, COOKIE_SNOOZE + snooze_minute, true)) {
         n++;
         erste = wann;
       }
-    } else if (snooze_at <= now) {
+    } else if (snooze_at > 0 && snooze_at <= now) {
       // Verstrichen: meist hat er eben geklopft, sonst verpasste ihn die Uhr
       // (aus, Wecker verworfen). Vorbei ist nur der WECKER. Den Zaehler
       // loeschen erst Abhaken und Wegdruecken - bis 0.15.0 fiel er hier mit
       // weg, und jeder Aufschub war wieder der erste: "hoechstens dreimal"
       // griff nie.
-      persist_delete(PERSIST_SNOOZE_AT);
-    } else if (runde == heute && klopft > heute && !offen) {
-      // Heute schon erledigt (etwa auf dem Heute-Schirm), und er klopfte
-      // erst nach Mitternacht: dann wuesste die Uhr nicht mehr, dass die
-      // Runde genommen ist, und erinnerte an Erledigtes. Also jetzt vorbei.
       persist_delete(PERSIST_SNOOZE_AT);
     }
   }
@@ -297,7 +301,7 @@ void remind_schedule(void) {
 }
 
 int remind_cookie_minute(int32_t cookie) {
-  if (cookie >= COOKIE_SNOOZE && cookie < COOKIE_SNOOZE + 1440) {
+  if (remind_cookie_aufschub(cookie)) {
     // Ein Aufschub: die Erinnerung gilt der aufgeschobenen Runde, nicht
     // allem, was gerade offen ist.
     return (int)(cookie - COOKIE_SNOOZE);
@@ -310,14 +314,13 @@ bool remind_cookie_neuplanen(int32_t cookie) {
   return cookie == COOKIE_NEUPLANEN;
 }
 
+bool remind_cookie_aufschub(int32_t cookie) {
+  return cookie >= COOKIE_SNOOZE && cookie < COOKIE_SNOOZE + 1440;
+}
+
 bool remind_launch_cookie(int32_t *cookie) {
   if (launch_reason() != APP_LAUNCH_WAKEUP) return false;
   WakeupId id;
   return wakeup_get_launch_event(&id, cookie);
 }
 
-int remind_launch_minute(void) {
-  int32_t cookie;
-  if (!remind_launch_cookie(&cookie)) return -1;
-  return remind_cookie_minute(cookie);
-}

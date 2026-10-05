@@ -380,9 +380,14 @@ int main(void) {
     stub_jetzt = MORGEN;
     uint8_t alt[SC_MAX_ITEMS * SC_ITEM_BYTES];
     memset(alt, 0, sizeof(alt));
-    memcpy(alt, "Zink", 4);
-    alt[16] = 8; alt[18] = 1; alt[19] = 1;
-    for (int b = 0; b < 4; b++) alt[22 + b] = (uint8_t)((uint32_t)(TAG_0310 - 10) >> (8 * b));
+    // Zink und D3 um 08:00: D3 bleibt offen, sonst waere der Aufschub der
+    // Runde gleich wieder vorbei (remind_schedule).
+    for (int k = 0; k < 2; k++) {
+      uint8_t *q = alt + k * SC_ITEM_BYTES;
+      memcpy(q, k ? "D3" : "Zink", k ? 2 : 4);
+      q[16] = 8; q[18] = 1; q[19] = 1;
+      for (int b = 0; b < 4; b++) q[22 + b] = (uint8_t)((uint32_t)(TAG_0310 - 10) >> (8 * b));
+    }
     persist_write_data(FACH_PLAN, alt, sizeof(alt));
     persist_write_int(FACH_TAG, TAG_0310);
     plan_init();                                    // Umstellung: Fach 9
@@ -414,9 +419,9 @@ int main(void) {
     prefs_init();
     pruefe("Neustart: die Animation bleibt aus", !prefs_fx());
     pruefe("Neustart: der Haken bleibt mit seiner Zeit", plan_taken(0) && plan_taken_at(0) == MORGEN);
-    pruefe("Neustart: der Plan bleibt", plan_count() == 1 && strcmp(plan_item(0)->name, "Zink") == 0 &&
+    pruefe("Neustart: der Plan bleibt", plan_count() == 2 && strcmp(plan_item(0)->name, "Zink") == 0 &&
                                         plan_item(0)->anchor_day == TAG_0310 - 10);
-    pruefe("Neustart: der Aufschub zaehlt 2", remind_snooze_count(480) == 2);
+    pruefe("Neustart: der Aufschub zaehlt 2", remind_snooze_count(480, plan_today()) == 2);
     pruefe("Neustart: Fach 9 sagt Kalendertage", persist_read_int(FACH_TAGE) == 2);
     pruefe("Neustart: Fach 2 ist der gemerkte Tag", persist_read_int(FACH_TAG) == TAG_0310);
   }

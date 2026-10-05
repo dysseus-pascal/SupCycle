@@ -51,6 +51,7 @@ static void pruefe(const char *was, bool ok) {
 #define FACH_AUFSCHUB_ZEIT   5
 #define FACH_AUFSCHUB_MINUTE 6
 #define FACH_AUFSCHUB_ZAHL   7
+#define FACH_AUFSCHUB_TAG    10
 
 static time_t ortszeit(int j, int mo, int t, int h, int mi) {
   struct tm tm = { .tm_year = j - 1900, .tm_mon = mo - 1, .tm_mday = t,
@@ -398,9 +399,11 @@ static void abschnitt_aufschub_zaehlt(void) {
   // stellt alle Wecker neu - dreimal hintereinander.
   for (int k = 1; k <= SC_SNOOZE_MAX; k++) {
     char was[96];
+    // Das erste Fenster kam vom Wecker der Runde, die weiteren vom Aufschub.
+    const int32_t cookie = k == 1 ? 480 : COOKIE_AUFSCHUB + 480;
     snprintf(was, sizeof(was), "vor dem %d. Aufschub ist einer uebrig", k);
-    pruefe(was, remind_snooze_left(480));
-    remind_snooze(480, remind_runden_tag(480));   // wie das Erinnerungsfenster
+    pruefe(was, remind_snooze_left(480, remind_runden_tag(cookie)));
+    remind_snooze(480, remind_runden_tag(cookie));   // wie das Erinnerungsfenster
     const AttrappeWecker *a = aufschub_wecker(480);
     snprintf(was, sizeof(was), "der %d. steht 15 min spaeter", k);
     pruefe(was, a && a->zeit == stub_jetzt + SC_SNOOZE_MIN * 60);
@@ -408,27 +411,29 @@ static void abschnitt_aufschub_zaehlt(void) {
     stub_jetzt = a->zeit;         // er klopft ...
     remind_schedule();            // ... und die App stellt neu
     snprintf(was, sizeof(was), "nach dem Klopfen zaehlt er %d", k);
-    pruefe(was, remind_snooze_count(480) == k);
+    pruefe(was, remind_snooze_count(480, heute) == k);
     pruefe("  und klopft nicht nochmal", aufschub_wecker(480) == NULL);
   }
-  pruefe("nach dem dritten ist keiner mehr uebrig", !remind_snooze_left(480));
-  pruefe("die Runde 12:30 hat ihre eigenen drei", remind_snooze_count(750) == 0 && remind_snooze_left(750));
+  pruefe("nach dem dritten ist keiner mehr uebrig", !remind_snooze_left(480, heute));
+  pruefe("die Runde 12:30 hat ihre eigenen drei", remind_snooze_count(750, heute) == 0 && remind_snooze_left(750, heute));
 
   // Morgen ist die Runde 08:00 ein neuer Anlass.
   stub_jetzt = ortszeit(2026, 7, 15, 8, 0);
   remind_schedule();
-  pruefe("morgen faengt die Runde 08:00 bei null an", remind_snooze_count(480) == 0 && remind_snooze_left(480));
+  pruefe("morgen faengt die Runde 08:00 bei null an",
+         remind_runden_tag(480) == heute + 1 && remind_snooze_count(480, heute + 1) == 0 &&
+         remind_snooze_left(480, heute + 1));
   remind_snooze(480, remind_runden_tag(480));
-  pruefe("  und zaehlt dann 1", remind_snooze_count(480) == 1);
+  pruefe("  und zaehlt dann 1", remind_snooze_count(480, heute + 1) == 1);
   // Wie das Erinnerungsfenster nach Abhaken und Wegdruecken: vergessen,
   // dann neu stellen.
   remind_snooze_clear(750);
   remind_schedule();
   pruefe("Abhaken und Wegdruecken einer anderen Runde lassen ihn stehen",
-         remind_snooze_count(480) == 1 && aufschub_wecker(480) != NULL);
+         remind_snooze_count(480, heute + 1) == 1 && aufschub_wecker(480) != NULL);
   remind_snooze_clear(480);
   remind_schedule();
-  pruefe("die eigene Runde loescht ihn", remind_snooze_count(480) == 0 && aufschub_wecker(480) == NULL);
+  pruefe("die eigene Runde loescht ihn", remind_snooze_count(480, heute + 1) == 0 && aufschub_wecker(480) == NULL);
 
   // Ein Aufschub, den 0.15.0 hinterliess (ohne Tag): er klopft noch, zaehlt
   // aber nicht - lieber einmal zu oft aufschieben als zu frueh verfallen.
@@ -439,7 +444,7 @@ static void abschnitt_aufschub_zaehlt(void) {
   persist_write_int(FACH_AUFSCHUB_ZAHL, 3);
   remind_schedule();
   pruefe("0.15.0-Aufschub ohne Tag: er klopft um 08:15", aufschub_wecker(480) && ist_um(aufschub_wecker(480)->zeit, 2026, 7, 14, 8, 15));
-  pruefe("  und laesst noch Aufschuebe uebrig", remind_snooze_left(480));
+  pruefe("  und laesst noch Aufschuebe uebrig", remind_snooze_left(480, remind_runden_tag(COOKIE_AUFSCHUB + 480)));
   remind_snooze_clear(480);
 }
 
@@ -473,7 +478,7 @@ static void abschnitt_kurz_davor(void) {
     pruefe(was, a != NULL);
     pruefe("  nicht frueher, und hoechstens 31 s nach dem Neustellen",
            a && a->zeit >= soll && a->zeit <= stub_jetzt + 31);
-    pruefe("  und zaehlt weiter als derselbe", remind_snooze_count(480) == 1);
+    pruefe("  und zaehlt weiter als derselbe", remind_snooze_count(480, heute) == 1);
   }
   // Klopft er gerade (Start durch ihn), steht er nicht nochmal.
   frisch(ortszeit(J, M, T, 8, 0));
@@ -501,7 +506,7 @@ static void mitternacht(int J, int M, int T) {
   frisch(ortszeit(J, M, T, 23, 50));
   Platz spaet[] = { { "Mg", 23, 50, 1, 0, 0, heute - 10 } };
   plan_setzen(spaet, 1);
-  remind_snooze(1430, remind_runden_tag(1430));
+  remind_snooze(1430, remind_runden_tag(1430));   // vom Wecker der Runde
   const AttrappeWecker *a = aufschub_wecker(1430);
   snprintf(was, sizeof(was), "%04d-%02d-%02d 23:50 aufgeschoben: er klopft um 00:05", J, M, T);
   pruefe(was, a && ist_um(a->zeit, J, M, T + 1, 0, 5));
@@ -510,18 +515,18 @@ static void mitternacht(int J, int M, int T) {
     stub_jetzt = a->zeit;         // er klopft ...
     remind_schedule();            // ... und die App stellt neu
     snprintf(was, sizeof(was), "  nach Mitternacht die Runde von gestern, Aufschub %d", k);
-    pruefe(was, remind_runden_tag(1430) == heute && remind_snooze_count(1430) == k);
+    pruefe(was, remind_runden_tag(COOKIE_AUFSCHUB + 1430) == heute && remind_snooze_count(1430, heute) == k);
     if (k == SC_SNOOZE_MAX) break;
-    remind_snooze(1430, remind_runden_tag(1430));
+    remind_snooze(1430, remind_runden_tag(COOKIE_AUFSCHUB + 1430));
     a = aufschub_wecker(1430);
     pruefe("  und klopft 15 min spaeter wieder", a && a->zeit == stub_jetzt + SC_SNOOZE_MIN * 60);
     if (!a) return;
   }
-  pruefe("  nach dem dritten ist keiner mehr uebrig", !remind_snooze_left(1430));
+  pruefe("  nach dem dritten ist keiner mehr uebrig", !remind_snooze_left(1430, heute));
   pruefe("  die Runde 23:50 von heute klopft trotzdem", wecker_um(1430, J, M, T + 1, 23, 50));
   stub_jetzt = ortszeit(J, M, T + 1, 23, 50);
   pruefe("  um 23:50 ist es die Runde von heute, bei null",
-         remind_runden_tag(1430) == heute + 1 && remind_snooze_count(1430) == 0);
+         remind_runden_tag(1430) == heute + 1 && remind_snooze_count(1430, heute + 1) == 0);
 }
 
 static void abschnitt_mitternacht(void) {
@@ -567,6 +572,43 @@ static void abschnitt_mitternacht(void) {
   pruefe("ein Aufschub, der zwei Tage nach seiner Runde klopfte: nie", aufschub_wecker(1430) == NULL);
 }
 
+// Ein Aufschub, dessen Runde heute erledigt ist, ist ganz vorbei - nicht nur
+// sein Wecker. Und nur ein Aufschub-Wecker kann der Runde von gestern gelten.
+static void abschnitt_erledigt(void) {
+  printf("\nErledigt: der ganze Aufschub ist vorbei; gestern nur fuer den Aufschub\n");
+  const int J = 2026, M = 7, T = 14;
+  const int32_t heute = datum_tag(J, M, T);
+  Platz zwei[] = { { "Zink", 8, 0, 1, 0, 0, heute }, { "Maca", 12, 30, 1, 0, 0, heute } };
+  frisch(ortszeit(J, M, T, 8, 0));
+  plan_setzen(zwei, 2);
+  remind_snooze(480, heute);
+  stub_jetzt = ortszeit(J, M, T, 8, 10);
+  plan_set_taken(0, true);
+  remind_schedule();              // wie der Heute-Schirm nach dem Abhaken
+  pruefe("08:10 auf dem Heute-Schirm abgehakt: kein Aufschub-Wecker", aufschub_wecker(480) == NULL);
+  pruefe("  und Minute, Zaehler und Tag sind auch weg",
+         !persist_exists(FACH_AUFSCHUB_ZEIT) && !persist_exists(FACH_AUFSCHUB_MINUTE) &&
+         !persist_exists(FACH_AUFSCHUB_ZAHL) && !persist_exists(FACH_AUFSCHUB_TAG));
+  pruefe("  das steht im Log", strstr(attrappe_log_text, "Runde 480 erledigt") != NULL);
+
+  // Liegen geblieben und offen: aufgeschoben, geklopft, nicht beantwortet.
+  frisch(ortszeit(J, M, T, 8, 0));
+  plan_setzen(zwei, 2);
+  remind_snooze(480, heute);
+  stub_jetzt = ortszeit(J, M, T, 8, 15);
+  remind_schedule();
+  pruefe("unbeantwortet: Minute und Tag bleiben", persist_exists(FACH_AUFSCHUB_MINUTE) && persist_exists(FACH_AUFSCHUB_TAG));
+  // Am naechsten Tag klopft der Wecker der Runde 08:00 vor ihrer Uhrzeit
+  // (nach einer Reise nach Westen): es ist trotzdem die Runde von heute.
+  stub_jetzt = ortszeit(J, M, T + 1, 2, 0);
+  pruefe("ein gewoehnlicher Wecker um 02:00: die Runde von heute, bei null",
+         remind_runden_tag(480) == heute + 1 && remind_snooze_count(480, remind_runden_tag(480)) == 0);
+  pruefe("ein Aufschub-Wecker derselben Runde: die von gestern",
+         remind_runden_tag(COOKIE_AUFSCHUB + 480) == heute);
+  pruefe("ein Aufschub-Wecker einer anderen Runde: heute",
+         remind_runden_tag(COOKIE_AUFSCHUB + 750) == heute + 1);
+}
+
 int main(void) {
   printf("Zeitzone: %s\n", getenv("TZ") ? getenv("TZ") : "(Rechner)");
   abschnitt_vorausplanen();
@@ -577,6 +619,7 @@ int main(void) {
   abschnitt_aufschub_zaehlt();
   abschnitt_kurz_davor();
   abschnitt_mitternacht();
+  abschnitt_erledigt();
   printf("%s\n", s_fehler ? "NICHT BESTANDEN" : "alles bestanden");
   return s_fehler ? 1 : 0;
 }

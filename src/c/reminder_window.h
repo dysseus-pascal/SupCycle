@@ -3,9 +3,9 @@
 
 // Vollbild-Erinnerung: Kapsel, Uhrzeit, was ansteht, Aktionsleiste rechts.
 //
-// `minute` ist die Uhrzeit der Erinnerung in Minuten seit Mitternacht; -1
-// heisst "alles, was heute noch offen ist" (nach einem Aufschub oder wenn die
-// App von Hand geoeffnet wurde).
+// `cookie` ist der Cookie des Weckers (remind.h): er nennt die Uhrzeit der
+// Runde und, ob es ein Aufschub ist - nur der kann der Runde von gestern
+// gelten (remind_runden_tag).
 //
 // Ist zu dieser Zeit nichts mehr offen, erscheint gar nichts - eine
 // Erinnerung an etwas bereits Genommenes waere schlimmer als keine.
@@ -19,4 +19,4 @@
 // neu und zeigt beide. Ist das Fenster schon abgehakt und wartet nur noch auf
 // das Telefon, zeigt es die neue Runde danach, statt zuzugehen. Rueckgabe
 // dann true.
-bool reminder_window_push(int minute);
+bool reminder_window_push(int32_t cookie);

@@ -167,6 +167,9 @@ void app_event_loop(void);
 extern void (*attrappe_app_laeuft)(void);
 void attrappe_ui_leeren(void);
 int attrappe_fenster_zahl(void);
+// Wie viele Fenster standen, als die App verlassen wurde (vor dem Abbau);
+// -1 = sie lief noch nicht zu Ende.
+int attrappe_fenster_beim_ende(void);
 Window *attrappe_oberstes_fenster(void);
 // Eine Taste auf dem obersten Fenster druecken (kurz oder lang).
 void attrappe_taste(ButtonId taste);
