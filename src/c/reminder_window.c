@@ -303,6 +303,8 @@ static void prv_fx_done(void) {
   prv_close_nach_telefon();
 }
 
+static void prv_click_config(void *context);
+
 static void prv_take(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
   prv_stop_vibes();
@@ -335,6 +337,12 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
   s_playing = true;
   layer_mark_dirty(s_canvas);
   action_bar_layer_remove_from_window(s_bar);
+  // DIE TASTEN BLEIBEN. pebbleos setzt beim Abnehmen der Leiste die Tasten
+  // des Fensters auf NULL (action_bar_layer.c), und Zurueck nahm dann das
+  // Fenster weg: eine Runde, die beim Warten klopfte, war verloren, und die
+  // App blieb auf dem Heute-Schirm offen (bis sc-r2). So aendert Zurueck beim
+  // Warten nichts - wie ohne Animation, wo die Leiste stehen bleibt.
+  window_set_click_config_provider(s_window, prv_click_config);
   const GRect b = layer_get_bounds(s_canvas);
   if (!pill_fx_play(GPoint(b.size.w / 2, b.size.h / 2),
                     (int16_t)(b.size.w * 34 / 100), prv_fx_done)) {
@@ -416,8 +424,28 @@ static void prv_appear(Window *window) {
   pill_fx_init(s_canvas);
 }
 
+// Die vorgemerkten Runden (s_danach) als ein Wecker in einer Minute - wie
+// ein Aufschub, aber ohne zu zaehlen: aufgeschoben hat sie niemand.
+static void prv_nachholen(void) {
+  const Runde *neueste = &s_danach[s_danach_zahl - 1];
+  Aufschub a = { .minute = neueste->minute, .tag = neueste->tag };
+  for (int k = 0; k < s_danach_zahl; k++) {
+    const Runde *r = &s_danach[k];
+    if (r->tag == a.tag) a.plaetze |= prv_plaetze_in(r);
+    else if (r->tag == a.tag - 1) a.plaetze_vortag |= prv_plaetze_in(r);
+  }
+  APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d kommt in einer Minute wieder", a.minute);
+  remind_nachholen(&a);
+}
+
 static void prv_unload(Window *window) {
   prv_stop_vibes();
+  if (s_geht && s_danach_zahl > 0) {
+    // Die Uhr beendet die App beim Warten (langes Zurueck, eine andere App):
+    // die Runden, die dabei klopften, kamen nie auf den Schirm, und ihr
+    // Wecker ist verbraucht. Sie kommen in einer Minute wieder.
+    prv_nachholen();
+  }
   pill_fx_deinit(s_canvas);
   action_bar_layer_destroy(s_bar);
   if (s_icon_take) { gbitmap_destroy(s_icon_take); s_icon_take = NULL; }

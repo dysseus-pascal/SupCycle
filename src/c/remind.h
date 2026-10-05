@@ -141,6 +141,12 @@ void remind_snooze(const Aufschub *a);
 // Der gemerkte Aufschub. False, wenn keiner da ist oder er seine Plaetze
 // nicht kennt (gemerkt von sc-r und frueher): dann gilt seine ganze Runde.
 bool remind_aufschub(Aufschub *a);
+// Diese Plaetze in einer Minute wiederbringen, OHNE zu zaehlen - fuer
+// Runden, die klopften, waehrend die Erinnerung auf das Telefon wartete, und
+// die mit der App verschwanden. Wartet schon ein Aufschub desselben Tages,
+// kommen sie zu ihm (er klopft dann spaetestens in einer Minute); einer von
+// einem anderen Tag bleibt, und sie stehen nur auf dem Heute-Schirm.
+void remind_nachholen(const Aufschub *a);
 // Darf die Runde `minute` vom Kalendertag `tag` noch aufgeschoben werden?
 bool remind_snooze_left(int minute, int32_t tag);
 // Wie oft die Runde `minute` vom Kalendertag `tag` schon aufgeschoben wurde.

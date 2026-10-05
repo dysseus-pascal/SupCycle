@@ -16,7 +16,9 @@
 //     Fenster nach dem Abhaken nur noch auf das Telefon wartet, kommt sie
 //     danach.
 //   - NACH "GENOMMEN" (M3) geht die App erst zu, wenn das Telefon den Haken
-//     hat, hoechstens 5 s spaeter - ohne Verbindung sofort.
+//     hat, hoechstens 5 s spaeter - ohne Verbindung sofort. Zurueck aendert
+//     beim Warten nichts, auch mit Animation; wird die App beim Warten
+//     beendet, kommt eine vorgemerkte Runde in einer Minute wieder.
 //   - HOECHSTENS DREI AUFSCHUEBE, ueber jeden Start durch den Aufschub
 //     hinweg und auch, wenn er bei offener App klopft.
 //   - DER AUFSCHUB HAELT: von Hand kurz vor ihm geoeffnet, ueber Mitternacht
@@ -202,6 +204,55 @@ static void abschnitt_warten(bool fx, const char *titel) {
 }
 static void abschnitt_warten_ohne_fx(void) { abschnitt_warten(false, "Eine Runde klopft beim Warten auf das Telefon (W-H2)"); }
 static void abschnitt_warten_mit_fx(void) { abschnitt_warten(true, "Eine Runde klopft beim Warten auf das Telefon, mit Animation (W-H2)"); }
+
+// --- Zurueck, waehrend die Erinnerung auf das Telefon wartet ---
+// Mit Animation nimmt pebbleos beim Abnehmen der Leiste die Tasten des
+// Fensters weg (action_bar_layer.c), und Zurueck nahm das Fenster weg: die
+// Runde, die waehrenddessen klopfte, war verloren, und die App blieb auf dem
+// Heute-Schirm offen. Ohne Animation steht die Leiste, und Zurueck aendert
+// beim Warten nichts - so jetzt auch mit.
+static bool s_maca_klopft;
+static void zurueck_beim_warten(void) {
+  s_lief++;
+  attrappe_zeitgeber_vorspulen(1500);
+  attrappe_ack();                    // die Startanfrage ist durch
+  attrappe_taste(BUTTON_ID_SELECT);  // 08:00 genommen, Pilly spielt
+  if (s_maca_klopft) attrappe_wecker_feuert();   // Maca 08:01 klopft beim Warten
+  attrappe_taste(BUTTON_ID_BACK);
+  pruefe("Zurueck beim Warten: die Erinnerung bleibt", attrappe_fenster_zahl() == 2);
+  attrappe_animationen_beenden();
+  attrappe_ack();                    // das Telefon hat den Haken
+  if (!s_maca_klopft) {
+    pruefe("  nichts vorgemerkt: nach dem Telefon ist die App zu", attrappe_fenster_zahl() == 0);
+    return;
+  }
+  attrappe_zeichnen();
+  pruefe("  nach dem Telefon kommt Maca", attrappe_fenster_zahl() == 2 &&
+         strstr(attrappe_texte(), "Maca") && !strstr(attrappe_texte(), "Zink"));
+  attrappe_taste(BUTTON_ID_SELECT);
+  attrappe_animationen_beenden();
+  attrappe_zeitgeber_vorspulen(6000);
+  pruefe("  Maca genommen, die App ist zu", plan_taken(2) && attrappe_fenster_zahl() == 0);
+}
+static void zurueck_warten(bool maca, const char *titel) {
+  printf("\n%s\n", titel);
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, true);
+  platz_setzen(2, "Maca", 8, 1, 1, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0) + 57;
+  attrappe_start(APP_LAUNCH_WAKEUP, 480);
+  s_lief = 0;
+  s_maca_klopft = maca;
+  attrappe_app_laeuft = zurueck_beim_warten;
+  supcycle_main();
+  pruefe("die App lief", s_lief == 1);
+}
+static void abschnitt_zurueck_warten(void) {
+  zurueck_warten(true, "Zurueck beim Warten auf das Telefon, eine Runde vorgemerkt (mit Animation)");
+}
+static void abschnitt_zurueck_warten_allein(void) {
+  zurueck_warten(false, "Zurueck beim Warten auf das Telefon, nichts vorgemerkt (mit Animation)");
+}
 
 // --- Nach "Genommen" ---
 typedef enum { ACK, KEINE_ANTWORT, OHNE_VERBINDUNG } Antwort;
@@ -694,6 +745,36 @@ static void abschnitt_spaeter_vortag(void) {
   pruefe("  genommen: Ca abgehakt, Mg nicht (gestern)", plan_taken(4) && !plan_taken(3));
 }
 
+// Die Uhr beendet die App beim Warten (langes Zurueck): die vorgemerkte
+// Runde verschwindet nicht mit ihr, sondern kommt in einer Minute wieder.
+static void verlassen_beim_warten(void) {
+  s_lief++;
+  attrappe_zeitgeber_vorspulen(1500);
+  attrappe_ack();
+  attrappe_taste(BUTTON_ID_SELECT);  // 08:00 genommen
+  attrappe_wecker_feuert();          // Maca 08:01 klopft beim Warten
+  pruefe("Maca ist vorgemerkt, die App wartet", attrappe_fenster_zahl() == 2);
+}
+static void abschnitt_verlassen_warten(void) {
+  printf("\nDie App wird beim Warten auf das Telefon verlassen\n");
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, true);
+  platz_setzen(2, "Maca", 8, 1, 1, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0) + 57;
+  starten(APP_LAUNCH_WAKEUP, 480, verlassen_beim_warten);
+  const AttrappeWecker *a = aufschub_fuer(481);
+  pruefe("verlassen: Maca kommt in einer Minute wieder (08:02)", a && ist_um(a->zeit, 2026, 7, 14, 8, 2));
+  pruefe("  ohne als Aufschub zu zaehlen", remind_snooze_count(481, heute) == 0);
+  pruefe("  das steht im Log", strstr(attrappe_log_text, "kommt in einer Minute") != NULL);
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  persist_write_int(FACH_FX, 0);     // genommen_druecken wartet nicht auf Pilly
+  starten(APP_LAUNCH_WAKEUP, a->cookie, genommen_druecken);
+  pruefe("  08:02: Maca, ohne Aufschub-Vermerk", s_lief == 1 && strstr(s_gesehen, "Maca") &&
+         !strstr(s_gesehen, "Zink") && vermerk(NULL));
+  pruefe("  genommen", plan_taken(2));
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
@@ -704,6 +785,7 @@ static void (*const ABSCHNITTE[])(void) = {
   abschnitt_mitternacht_zweitage,  abschnitt_andere_runde_genommen, abschnitt_andere_runde_weg,
   abschnitt_westreise, abschnitt_mitternacht_teilweise, abschnitt_mitternacht_fenster,
   abschnitt_spaeter_alle, abschnitt_spaeter_vortag, abschnitt_haken_dazwischen, abschnitt_weg_bleibt_weg,
+  abschnitt_zurueck_warten, abschnitt_zurueck_warten_allein, abschnitt_verlassen_warten,
 };
 
 int main(void) {

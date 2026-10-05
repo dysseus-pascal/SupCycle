@@ -535,7 +535,12 @@ keinen Wecker mehr, obwohl sie nie bewusst liegen gelassen war. Bis 0.15.0
 schluckte ein liegen gelassenes Fenster jede weitere Runde des Tages: keine
 Vibration, nichts zu sehen, und ihr Wecker war verbraucht. Klopft eine Runde,
 während die Erinnerung nach dem Abhaken nur noch auf das Telefon wartet,
-erscheint sie danach, statt dass die App zugeht.
+erscheint sie danach, statt dass die App zugeht. Zurück ändert beim Warten
+nichts — auch mit Animation, bei der pebbleos mit der Leiste die Tasten des
+Fensters abnimmt; bis sc-r2 nahm Zurück dann das Fenster weg, die vorgemerkte
+Runde war verloren, und die App blieb auf dem Heute-Schirm offen. Beendet die
+Uhr die App beim Warten (langes Zurück), kommt die vorgemerkte Runde in einer
+Minute wieder — ohne als Aufschub zu zählen.
 
 Pebble erlaubt höchstens **acht** geplante Wakeups je App. Geplant werden die
 nächsten sieben Erinnerungen, **bis zu 60 Tage voraus** (steht darin keine,

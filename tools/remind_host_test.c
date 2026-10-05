@@ -740,6 +740,42 @@ static void abschnitt_vortag(void) {
   pruefe("  mit Mg vom Vortag und ohne Ca", remind_aufschub(&b) && b.plaetze == 0 && b.plaetze_vortag == 0x01);
 }
 
+// Runden, die klopften, waehrend die Erinnerung auf das Telefon wartete, und
+// mit der App verschwanden: in einer Minute wieder, ohne zu zaehlen - und
+// ohne einen wartenden Aufschub zu verdraengen.
+static void abschnitt_nachholen(void) {
+  printf("\nNachholen, was mit der App verschwand\n");
+  const int J = 2026, M = 7, T = 14;
+  const int32_t heute = datum_tag(J, M, T);
+  Platz zwei[] = { { "A", 8, 0, 1, 0, 0, heute }, { "B", 8, 1, 1, 0, 0, heute } };
+  const Aufschub b = { .minute = 481, .tag = heute, .plaetze = 0x02 };
+  frisch(ortszeit(J, M, T, 8, 1));
+  plan_setzen(zwei, 2);
+  remind_nachholen(&b);
+  pruefe("B 08:01: um 08:02 wieder, Zaehler 0",
+         wecker_um(COOKIE_AUFSCHUB + 481, J, M, T, 8, 2) && remind_snooze_count(481, heute) == 0);
+  // Der Aufschub von 08:00 wartet (08:15): B kommt zu ihm.
+  frisch(ortszeit(J, M, T, 8, 0));
+  plan_setzen(zwei, 2);
+  aufschieben(480, heute);
+  stub_jetzt = ortszeit(J, M, T, 8, 1);
+  remind_nachholen(&b);
+  Aufschub g;
+  pruefe("ein wartender Aufschub nimmt B auf und klopft um 08:02",
+         wecker_um(COOKIE_AUFSCHUB + 480, J, M, T, 8, 2) && aufschub_wecker(481) == NULL);
+  pruefe("  er bleibt der von 08:00, mit seinem Zaehler und A und B",
+         remind_aufschub(&g) && g.minute == 480 && g.plaetze == 0x03 && remind_snooze_count(480, heute) == 1);
+  // Einer von gestern wartet: er bleibt, B steht nur auf dem Heute-Schirm.
+  frisch(ortszeit(J, M, T, 0, 1));
+  plan_setzen(zwei, 2);
+  aufschieben(480, heute - 1);
+  stub_jetzt = ortszeit(J, M, T, 8, 1);
+  persist_write_int(FACH_AUFSCHUB_ZEIT, (int)ortszeit(J, M, T, 8, 10));
+  remind_nachholen(&b);
+  pruefe("ein Aufschub von gestern wartet: er bleibt, B nicht", remind_aufschub(&g) && g.tag == heute - 1 &&
+         strstr(attrappe_log_text, "bleibt auf dem Heute-Schirm") != NULL);
+}
+
 int main(void) {
   printf("Zeitzone: %s\n", getenv("TZ") ? getenv("TZ") : "(Rechner)");
   abschnitt_vorausplanen();
@@ -753,6 +789,7 @@ int main(void) {
   abschnitt_mitternacht();
   abschnitt_erledigt();
   abschnitt_vortag();
+  abschnitt_nachholen();
   printf("%s\n", s_fehler ? "NICHT BESTANDEN" : "alles bestanden");
   return s_fehler ? 1 : 0;
 }

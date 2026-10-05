@@ -171,23 +171,34 @@ void action_bar_layer_destroy(ActionBarLayer *bar) {
   free(bar);
 }
 void action_bar_layer_set_background_color(ActionBarLayer *bar, GColor color) { (void)bar; (void)color; }
-void action_bar_layer_set_click_config_provider(ActionBarLayer *bar, ClickConfigProvider provider) { bar->tasten = provider; }
+// Wie pebbleos action_bar_layer.c: die Leiste setzt beim Anbringen ihre
+// Tasten als die des Fensters, und beim Abnehmen setzt sie die des Fensters
+// auf NULL - Zurueck nimmt dann das Fenster weg.
+void action_bar_layer_set_click_config_provider(ActionBarLayer *bar, ClickConfigProvider provider) {
+  bar->tasten = provider;
+  if (bar->fenster) bar->fenster->tasten = provider;
+}
 void action_bar_layer_set_icon(ActionBarLayer *bar, ButtonId button_id, const GBitmap *icon) { (void)bar; (void)button_id; (void)icon; }
 void action_bar_layer_clear_icon(ActionBarLayer *bar, ButtonId button_id) { (void)bar; (void)button_id; }
-void action_bar_layer_add_to_window(ActionBarLayer *bar, Window *window) { bar->fenster = window; window->leiste = bar; }
+void action_bar_layer_add_to_window(ActionBarLayer *bar, Window *window) {
+  bar->fenster = window;
+  window->leiste = bar;
+  window->tasten = bar->tasten;
+}
 void action_bar_layer_remove_from_window(ActionBarLayer *bar) {
-  if (bar->fenster) bar->fenster->leiste = NULL;
+  if (!bar->fenster) return;
+  bar->fenster->leiste = NULL;
+  bar->fenster->tasten = NULL;
   bar->fenster = NULL;
 }
 
-// Die Tasten des obersten Fensters: die der Aktionsleiste, sonst die eigenen.
+// Die Tasten des obersten Fensters - mit Aktionsleiste deren.
 static void prv_tasten_holen(void) {
   memset(s_kurz, 0, sizeof(s_kurz));
   memset(s_lang, 0, sizeof(s_lang));
   Window *w = attrappe_oberstes_fenster();
   if (!w) return;
-  ClickConfigProvider p = w->leiste ? w->leiste->tasten : w->tasten;
-  if (p) p(NULL);
+  if (w->tasten) w->tasten(NULL);
 }
 void attrappe_taste(ButtonId taste) {
   prv_tasten_holen();

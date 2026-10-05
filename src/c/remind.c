@@ -122,6 +122,30 @@ void remind_snooze(const Aufschub *a) {
           (int)a->tag, a->plaetze, a->plaetze_vortag);
   remind_schedule();
 }
+void remind_nachholen(const Aufschub *a) {
+  const time_t wann = time(NULL) + 60;
+  const time_t wartet = prv_snooze_at();
+  int32_t tag;
+  uint8_t plaetze, vortag;
+  if (wartet > 0 && prv_snooze_tag(&tag) && prv_snooze_plaetze(&plaetze, &vortag)) {
+    // Ein Aufschub wartet noch: er bleibt, Uhrzeit und Zaehler sind seine.
+    if (tag != a->tag) {
+      APP_LOG(APP_LOG_LEVEL_WARNING, "Runde %d bleibt auf dem Heute-Schirm - Aufschub vom Tag %d wartet",
+              a->minute, (int)tag);
+      return;
+    }
+    prv_snooze_plaetze_schreiben(plaetze | a->plaetze, vortag | a->plaetze_vortag);
+    if (wann < wartet) persist_write_int(PERSIST_SNOOZE_AT, (int)wann);
+  } else {
+    persist_write_int(PERSIST_SNOOZE_AT, (int)wann);
+    persist_write_int(PERSIST_SNOOZE_COUNT, prv_zahl(a->minute, a->tag));
+    persist_write_int(PERSIST_SNOOZE_MINUTE, a->minute);
+    persist_write_int(PERSIST_SNOOZE_TAG, (int)a->tag);
+    prv_snooze_plaetze_schreiben(a->plaetze, a->plaetze_vortag);
+  }
+  remind_schedule();
+}
+
 bool remind_aufschub(Aufschub *a) {
   const int minute = prv_snooze_minute();
   if (minute < 0 || !prv_snooze_tag(&a->tag) || !prv_snooze_plaetze(&a->plaetze, &a->plaetze_vortag)) {
