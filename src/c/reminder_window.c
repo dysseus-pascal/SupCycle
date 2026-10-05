@@ -43,14 +43,18 @@ static GBitmap *s_icon_later;
 static AppTimer *s_vibe;
 static int s_vibes_left;
 
-// Eine Runde: ihre Uhrzeit (Minuten seit Mitternacht, -1 = "was offen ist")
-// und ihr Kalendertag (remind_runden_tag): heute, oder gestern nur fuer einen
-// Aufschub, der ueber Mitternacht ging. Beim Erscheinen festgelegt - eine
+// Eine Runde: ihre Uhrzeit (Minuten seit Mitternacht, -1 = "was offen ist"),
+// ihr Kalendertag (remind_runden_tag): heute, oder gestern nur fuer einen
+// Aufschub, der ueber Mitternacht ging - und ihre Plaetze (je Platz ein Bit),
+// die beim Erscheinen offen waren. Alles beim Erscheinen festgelegt: eine
 // Erinnerung von 23:50, die bis nach Mitternacht offen steht, bleibt die
-// Runde von gestern.
+// Runde von gestern und zeigt dann, was um 23:50 offen war - nicht, was
+// gestern ueberhaupt anstand. Die Haken von gestern kennt die Uhr nach
+// Mitternacht nicht mehr.
 typedef struct {
   int minute;
   int32_t tag;
+  uint8_t plaetze;
 } Runde;
 
 // Jede Uhrzeit des Plans, von heute und von gestern.
@@ -76,10 +80,12 @@ static const Runde *prv_neueste(void) {
 }
 
 // Die Runde in die Liste. Steht sie schon darin, rueckt sie ans Ende - sie
-// ist jetzt die neueste. Ist die Liste voll, faellt die aelteste heraus.
-static void prv_merken(Runde *liste, int *zahl, int minute, int32_t tag) {
+// ist jetzt die neueste - und behaelt ihre Plaetze dazu. Ist die Liste voll,
+// faellt die aelteste heraus.
+static void prv_merken(Runde *liste, int *zahl, Runde neu) {
   for (int k = 0; k < *zahl; k++) {
-    if (liste[k].minute != minute || liste[k].tag != tag) continue;
+    if (liste[k].minute != neu.minute || liste[k].tag != neu.tag) continue;
+    neu.plaetze |= liste[k].plaetze;
     memmove(&liste[k], &liste[k + 1], (size_t)(*zahl - k - 1) * sizeof(Runde));
     (*zahl)--;
     break;
@@ -89,21 +95,45 @@ static void prv_merken(Runde *liste, int *zahl, int minute, int32_t tag) {
     memmove(&liste[0], &liste[1], (size_t)(*zahl - 1) * sizeof(Runde));
     (*zahl)--;
   }
-  liste[*zahl] = (Runde){ .minute = minute, .tag = tag };
+  liste[*zahl] = neu;
   (*zahl)++;
 }
 
-// Gehört dieses Präparat zu dieser Runde? Bei -1 (ohne Uhrzeit) zählt alles,
-// was an ihrem Tag noch offen ist. Fuer die Runde von gestern zaehlt, was
-// gestern anstand - ihre Haken sind um Mitternacht weggefallen, und offen
-// ist sie, sonst klopfte ihr Aufschub nicht (remind_schedule). Haken gibt es
-// nur fuer heute (plan.h).
+// Die Plaetze der Runde `minute` vom Kalendertag `tag`, die jetzt offen sind;
+// bei -1 alle des Tages. Haken gibt es nur fuer heute (plan.h).
+static uint8_t prv_offene_plaetze(int minute, int32_t tag) {
+  uint8_t plaetze = 0;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    const PlanItem *it = plan_item(i);
+    if (!it || !plan_due_on(i, tag)) continue;
+    if (minute >= 0 && it->hour * 60 + it->minute != minute) continue;
+    if (tag == plan_today() && plan_taken(i)) continue;
+    plaetze |= (uint8_t)(1u << i);
+  }
+  return plaetze;
+}
+
+// Gehört dieses Präparat zu dieser Runde? Fuer eine Runde von gestern nur,
+// was beim Erscheinen offen war (ihre Plaetze) - ihre Haken sind um
+// Mitternacht weggefallen. Fuer heute ausserdem, was zu ihrer Uhrzeit offen
+// ist: kommt waehrenddessen ein geaenderter Plan, steht er so mit da.
 static bool prv_in_runde(int i, const Runde *r) {
   if (!plan_due_on(i, r->tag)) return false;
-  if (r->tag == plan_today() && plan_taken(i)) return false;
-  if (r->minute < 0) return true;
+  const bool gemerkt = (r->plaetze & (1u << i)) != 0;
+  if (r->tag != plan_today()) return gemerkt;
+  if (plan_taken(i)) return false;
+  if (gemerkt || r->minute < 0) return true;
   const PlanItem *it = plan_item(i);
   return it && (it->hour * 60 + it->minute) == r->minute;
+}
+
+// Die Plaetze einer Runde, die jetzt im Fenster stehen.
+static uint8_t prv_plaetze_in(const Runde *r) {
+  uint8_t plaetze = 0;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (prv_in_runde(i, r)) plaetze |= (uint8_t)(1u << i);
+  }
+  return plaetze;
 }
 
 static int prv_zahl_in(const Runde *r) {
@@ -338,7 +368,8 @@ static void prv_later(ClickRecognizerRef recognizer, void *context) {
     return;
   }
   prv_stop_vibes();
-  remind_snooze(neueste.minute, neueste.tag);
+  const Aufschub a = { .minute = neueste.minute, .tag = neueste.tag, .plaetze = prv_plaetze_in(&neueste) };
+  remind_snooze(&a);
   prv_close();
 }
 
@@ -390,20 +421,27 @@ static void prv_unload(Window *window) {
 
 bool reminder_window_push(int32_t cookie) {
   const int minute = remind_cookie_minute(cookie);
-  const int32_t tag = remind_runden_tag(cookie);
+  Runde neu = { .minute = minute, .tag = remind_runden_tag(cookie) };
+  // Ein Aufschub bringt seine Plaetze wieder (remind.h); einer ohne (von
+  // sc-r und frueher gemerkt) die ganze Runde seiner Uhrzeit.
+  Aufschub a;
+  if (remind_cookie_aufschub(cookie) && remind_aufschub(&a) && a.minute == minute && a.tag == neu.tag) {
+    neu.plaetze = a.plaetze;
+  } else {
+    neu.plaetze = prv_offene_plaetze(minute, neu.tag);
+  }
   if (s_window) {
     // Das Fenster steht noch. Die neue Runde kommt dazu, wenn es zu ihr
     // etwas zu nehmen gibt.
-    const Runde neu = { .minute = minute, .tag = tag };
     if (prv_zahl_in(&neu) == 0) return true;
     if (s_geht) {
       // Schon abgehakt, der Schirm gehoert der Animation und dem Warten auf
       // das Telefon - danach ist sie dran (prv_nach_telefon).
-      prv_merken(s_danach, &s_danach_zahl, minute, tag);
+      prv_merken(s_danach, &s_danach_zahl, neu);
       APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d kommt nach dem Warten", minute);
       return true;
     }
-    prv_merken(s_runden, &s_runden_zahl, minute, tag);
+    prv_merken(s_runden, &s_runden_zahl, neu);
     APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d kommt zum offenen Fenster dazu", minute);
     prv_klopfen();
     layer_mark_dirty(s_canvas);
@@ -411,7 +449,7 @@ bool reminder_window_push(int32_t cookie) {
   }
   s_runden_zahl = 0;
   s_danach_zahl = 0;
-  prv_merken(s_runden, &s_runden_zahl, minute, tag);
+  prv_merken(s_runden, &s_runden_zahl, neu);
   if (prv_batch_count() == 0) return false;  // nichts offen: gar nicht erst zeigen
 
   s_playing = false;

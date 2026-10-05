@@ -127,6 +127,12 @@ static bool aufschub_wecker_um(int minute) {
   }
   return false;
 }
+// Wie "spaeter" im Erinnerungsfenster: die Runde `minute` vom Tag `tag`,
+// deren einziger offener Platz Platz 0 ist (so stehen die Plaene hier).
+static void aufschieben(int minute, int32_t tag) {
+  const Aufschub a = { .minute = minute, .tag = tag, .plaetze = 0x01 };
+  remind_snooze(&a);
+}
 static const AttrappeWecker *neuplanen(void) {
   const AttrappeWecker *gefunden = NULL;
   for (int i = 0; i < attrappe_wecker_zahl(); i++) {
@@ -316,7 +322,7 @@ static void abschnitt_neuplanen_selten(void) {
   frisch(ortszeit(J, M, T, 8, 0));
   Platz pause[] = { { "Maca", 8, 0, 1, 1, 52, heute - 6 } };   // heute der letzte Einnahmetag
   plan_setzen(pause, 1);
-  remind_snooze(480, heute);
+  aufschieben(480, heute);
   pruefe("Pause ab morgen, aber ein Aufschub laeuft: kein Wecker zum Neuplanen",
          aufschub_wecker_um(480) && neuplanen() == NULL);
   remind_snooze_clear(480);
@@ -371,7 +377,7 @@ static void abschnitt_aufschub(void) {
   Platz sechs[] = { { "A", 8, 0, 1, 0, 0, heute }, { "B", 9, 0, 1, 0, 0, heute }, { "C", 11, 0, 1, 0, 0, heute },
                     { "D", 13, 0, 1, 0, 0, heute }, { "E", 17, 0, 1, 0, 0, heute }, { "F", 21, 0, 1, 0, 0, heute } };
   plan_setzen(sechs, 6);
-  remind_snooze(480, heute);
+  aufschieben(480, heute);
   bool aufschub = false;
   for (int i = 0; i < attrappe_wecker_zahl(); i++) {
     if (attrappe_wecker(i)->cookie == COOKIE_AUFSCHUB + 480 && ist_um(attrappe_wecker(i)->zeit, 2026, 7, 14, 8, 17)) aufschub = true;
@@ -403,7 +409,7 @@ static void abschnitt_aufschub_zaehlt(void) {
     const int32_t cookie = k == 1 ? 480 : COOKIE_AUFSCHUB + 480;
     snprintf(was, sizeof(was), "vor dem %d. Aufschub ist einer uebrig", k);
     pruefe(was, remind_snooze_left(480, remind_runden_tag(cookie)));
-    remind_snooze(480, remind_runden_tag(cookie));   // wie das Erinnerungsfenster
+    aufschieben(480, remind_runden_tag(cookie));   // wie das Erinnerungsfenster
     const AttrappeWecker *a = aufschub_wecker(480);
     snprintf(was, sizeof(was), "der %d. steht 15 min spaeter", k);
     pruefe(was, a && a->zeit == stub_jetzt + SC_SNOOZE_MIN * 60);
@@ -423,7 +429,7 @@ static void abschnitt_aufschub_zaehlt(void) {
   pruefe("morgen faengt die Runde 08:00 bei null an",
          remind_runden_tag(480) == heute + 1 && remind_snooze_count(480, heute + 1) == 0 &&
          remind_snooze_left(480, heute + 1));
-  remind_snooze(480, remind_runden_tag(480));
+  aufschieben(480, remind_runden_tag(480));
   pruefe("  und zaehlt dann 1", remind_snooze_count(480, heute + 1) == 1);
   // Wie das Erinnerungsfenster nach Abhaken und Wegdruecken: vergessen,
   // dann neu stellen.
@@ -468,7 +474,7 @@ static void abschnitt_kurz_davor(void) {
   for (unsigned k = 0; k < sizeof(sekunden_davor) / sizeof(sekunden_davor[0]); k++) {
     frisch(ortszeit(J, M, T, 8, 0));
     plan_setzen(zwei, 2);
-    remind_snooze(480, heute);
+    aufschieben(480, heute);
     const time_t soll = stub_jetzt + SC_SNOOZE_MIN * 60;
     stub_jetzt = soll - sekunden_davor[k];
     remind_schedule();
@@ -483,7 +489,7 @@ static void abschnitt_kurz_davor(void) {
   // Klopft er gerade (Start durch ihn), steht er nicht nochmal.
   frisch(ortszeit(J, M, T, 8, 0));
   plan_setzen(zwei, 2);
-  remind_snooze(480, heute);
+  aufschieben(480, heute);
   stub_jetzt += SC_SNOOZE_MIN * 60;
   remind_schedule();
   pruefe("beim Klopfen selbst: kein zweiter", aufschub_wecker(480) == NULL);
@@ -506,7 +512,7 @@ static void mitternacht(int J, int M, int T) {
   frisch(ortszeit(J, M, T, 23, 50));
   Platz spaet[] = { { "Mg", 23, 50, 1, 0, 0, heute - 10 } };
   plan_setzen(spaet, 1);
-  remind_snooze(1430, remind_runden_tag(1430));   // vom Wecker der Runde
+  aufschieben(1430, remind_runden_tag(1430));   // vom Wecker der Runde
   const AttrappeWecker *a = aufschub_wecker(1430);
   snprintf(was, sizeof(was), "%04d-%02d-%02d 23:50 aufgeschoben: er klopft um 00:05", J, M, T);
   pruefe(was, a && ist_um(a->zeit, J, M, T + 1, 0, 5));
@@ -517,7 +523,7 @@ static void mitternacht(int J, int M, int T) {
     snprintf(was, sizeof(was), "  nach Mitternacht die Runde von gestern, Aufschub %d", k);
     pruefe(was, remind_runden_tag(COOKIE_AUFSCHUB + 1430) == heute && remind_snooze_count(1430, heute) == k);
     if (k == SC_SNOOZE_MAX) break;
-    remind_snooze(1430, remind_runden_tag(COOKIE_AUFSCHUB + 1430));
+    aufschieben(1430, remind_runden_tag(COOKIE_AUFSCHUB + 1430));
     a = aufschub_wecker(1430);
     pruefe("  und klopft 15 min spaeter wieder", a && a->zeit == stub_jetzt + SC_SNOOZE_MIN * 60);
     if (!a) return;
@@ -543,7 +549,7 @@ static void abschnitt_mitternacht(void) {
   frisch(ortszeit(J, M, T, 23, 50));
   Platz zweitage[] = { { "Mg", 23, 50, 2, 0, 0, heute } };
   plan_setzen(zweitage, 1);
-  remind_snooze(1430, remind_runden_tag(1430));
+  aufschieben(1430, remind_runden_tag(1430));
   stub_jetzt = ortszeit(J, M, T + 1, 0, 1);
   remind_schedule();
   pruefe("alle 2 Tage, heute nicht dran: der Aufschub von gestern klopft", wecker_um(COOKIE_AUFSCHUB + 1430, J, M, T + 1, 0, 5));
@@ -553,7 +559,7 @@ static void abschnitt_mitternacht(void) {
   frisch(ortszeit(J, M, T, 23, 50));
   Platz spaet[] = { { "Mg", 23, 50, 1, 0, 0, heute - 10 } };
   plan_setzen(spaet, 1);
-  remind_snooze(1430, remind_runden_tag(1430));
+  aufschieben(1430, remind_runden_tag(1430));
   stub_jetzt = ortszeit(J, M, T, 23, 55);
   plan_set_taken(0, true);
   remind_schedule();              // wie der Heute-Schirm nach dem Abhaken
@@ -565,7 +571,7 @@ static void abschnitt_mitternacht(void) {
   // nie.
   frisch(ortszeit(J, M, T, 23, 50));
   plan_setzen(spaet, 1);
-  remind_snooze(1430, heute - 1);
+  aufschieben(1430, heute - 1);
   stub_jetzt = ortszeit(J, M, T, 23, 51);
   persist_write_int(FACH_AUFSCHUB_ZEIT, (int)ortszeit(J, M, T + 1, 0, 5));
   remind_schedule();
@@ -581,7 +587,7 @@ static void abschnitt_erledigt(void) {
   Platz zwei[] = { { "Zink", 8, 0, 1, 0, 0, heute }, { "Maca", 12, 30, 1, 0, 0, heute } };
   frisch(ortszeit(J, M, T, 8, 0));
   plan_setzen(zwei, 2);
-  remind_snooze(480, heute);
+  aufschieben(480, heute);
   stub_jetzt = ortszeit(J, M, T, 8, 10);
   plan_set_taken(0, true);
   remind_schedule();              // wie der Heute-Schirm nach dem Abhaken
@@ -594,7 +600,7 @@ static void abschnitt_erledigt(void) {
   // Liegen geblieben und offen: aufgeschoben, geklopft, nicht beantwortet.
   frisch(ortszeit(J, M, T, 8, 0));
   plan_setzen(zwei, 2);
-  remind_snooze(480, heute);
+  aufschieben(480, heute);
   stub_jetzt = ortszeit(J, M, T, 8, 15);
   remind_schedule();
   pruefe("unbeantwortet: Minute und Tag bleiben", persist_exists(FACH_AUFSCHUB_MINUTE) && persist_exists(FACH_AUFSCHUB_TAG));

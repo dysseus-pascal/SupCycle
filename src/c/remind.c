@@ -15,13 +15,19 @@
 // gestartet, und beim Start werden alle Wecker neu gestellt. Ohne Persist
 // fiele der Aufschub beim ersten Start dazwischen weg - genau das war der
 // Fehler, mit dem ein "spaeter" am Morgen manchmal nie wiederkam.
-// plan.c belegt 1..3, 8 und 9, prefs.c 4.
+// plan.c belegt 1..3, 8 und 9, prefs.c 4, remind.c 5..7, 10 und 11.
 #define PERSIST_SNOOZE_AT     5
 #define PERSIST_SNOOZE_MINUTE 6
 #define PERSIST_SNOOZE_COUNT  7
 // Der Tag der aufgeschobenen Runde. Der Zaehler gilt nur an diesem Tag: die
 // Runde 08:00 von morgen ist ein neuer Anlass und faengt bei null an.
 #define PERSIST_SNOOZE_TAG    10
+// Die Plaetze, die der Aufschub wiederbringt (je Platz ein Bit). Ueber
+// Mitternacht kennt die Uhr die Haken von gestern nicht mehr (plan.c) - ohne
+// diese Liste zeigte der Aufschub von 23:50 um 00:05 auch, was um 23:55 auf
+// dem Heute-Schirm abgehakt wurde. Bis Mitternacht schrumpft sie mit jedem
+// Haken (remind_schedule), danach steht sie fest.
+#define PERSIST_SNOOZE_PLAETZE 11
 
 static time_t prv_snooze_at(void) {
   return persist_exists(PERSIST_SNOOZE_AT) ? (time_t)persist_read_int(PERSIST_SNOOZE_AT) : 0;
@@ -32,6 +38,13 @@ static int prv_snooze_minute(void) {
 static bool prv_snooze_tag(int32_t *tag) {
   if (!persist_exists(PERSIST_SNOOZE_TAG)) return false;
   *tag = (int32_t)persist_read_int(PERSIST_SNOOZE_TAG);
+  return true;
+}
+// Ohne das Fach (Aufschub von sc-r und frueher) false: dann gilt die ganze
+// Runde seiner Uhrzeit, wie damals.
+static bool prv_snooze_plaetze(uint8_t *plaetze) {
+  if (!persist_exists(PERSIST_SNOOZE_PLAETZE)) return false;
+  *plaetze = (uint8_t)persist_read_int(PERSIST_SNOOZE_PLAETZE);
   return true;
 }
 
@@ -79,15 +92,24 @@ void remind_snooze_clear(int minute) {
   persist_delete(PERSIST_SNOOZE_MINUTE);
   persist_delete(PERSIST_SNOOZE_COUNT);
   persist_delete(PERSIST_SNOOZE_TAG);
+  persist_delete(PERSIST_SNOOZE_PLAETZE);
 }
-void remind_snooze(int minute, int32_t tag) {
-  const int count = prv_zahl(minute, tag) + 1;
+void remind_snooze(const Aufschub *a) {
+  const int count = prv_zahl(a->minute, a->tag) + 1;
   persist_write_int(PERSIST_SNOOZE_AT, (int)(time(NULL) + SC_SNOOZE_MIN * 60));
-  persist_write_int(PERSIST_SNOOZE_MINUTE, minute);
+  persist_write_int(PERSIST_SNOOZE_MINUTE, a->minute);
   persist_write_int(PERSIST_SNOOZE_COUNT, count);
-  persist_write_int(PERSIST_SNOOZE_TAG, (int)tag);
-  APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub %d fuer Minute %d vom Tag %d", count, minute, (int)tag);
+  persist_write_int(PERSIST_SNOOZE_TAG, (int)a->tag);
+  persist_write_int(PERSIST_SNOOZE_PLAETZE, a->plaetze);
+  APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub %d fuer Minute %d vom Tag %d, Plaetze %02x", count, a->minute,
+          (int)a->tag, a->plaetze);
   remind_schedule();
+}
+bool remind_aufschub(Aufschub *a) {
+  const int minute = prv_snooze_minute();
+  if (minute < 0 || !prv_snooze_tag(&a->tag) || !prv_snooze_plaetze(&a->plaetze)) return false;
+  a->minute = minute;
+  return true;
 }
 
 // Der Tag der Runde, der der gemerkte Aufschub gilt. Ohne gemerkten Tag
@@ -170,6 +192,25 @@ static bool prv_wird_wieder_faellig(void) {
   return false;
 }
 
+// Ist vom gemerkten Aufschub (Runde `minute` vom Kalendertag `runde`) noch
+// etwas offen? Mit Plaetzen: die davon, die an dem Tag noch anstehen und -
+// heute - nicht abgehakt sind; dabei schrumpft die Liste mit jedem Haken, denn
+// nach Mitternacht weiss die Uhr nichts mehr davon. Ohne Plaetze (Aufschub
+// von sc-r und frueher) die ganze Runde seiner Uhrzeit.
+static bool prv_aufschub_offen(int32_t runde, int minute) {
+  const bool heute = runde == plan_today();
+  uint8_t plaetze;
+  if (!prv_snooze_plaetze(&plaetze)) return prv_noch_offen(runde, minute, heute);
+  uint8_t noch = 0;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (!(plaetze & (1u << i)) || !plan_due_on(i, runde)) continue;
+    if (heute && plan_taken(i)) continue;
+    noch |= (uint8_t)(1u << i);
+  }
+  if (heute && noch != plaetze) persist_write_int(PERSIST_SNOOZE_PLAETZE, noch);
+  return noch != 0;
+}
+
 void remind_schedule(void) {
   const time_t now = time(NULL);
   wakeup_cancel_all();
@@ -191,8 +232,8 @@ void remind_schedule(void) {
     const bool gestern = runde == heute - 1;
     // Die Haken von gestern kennt die Uhr nach Mitternacht nicht mehr
     // (plan.c). Ob die Runde von gestern noch offen ist, steht deshalb schon
-    // vor Mitternacht fest - siehe den ersten Zweig.
-    const bool offen = prv_noch_offen(runde, snooze_minute, !gestern);
+    // vor Mitternacht fest - siehe den ersten Zweig und prv_aufschub_offen.
+    const bool offen = prv_aufschub_offen(runde, snooze_minute);
     const bool gilt = snooze_at > now && offen && (runde == heute || gestern) &&
         (klopft == runde || klopft == runde + 1);
     if (runde == heute && !offen) {

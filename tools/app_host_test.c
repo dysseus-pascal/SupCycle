@@ -549,6 +549,55 @@ static void abschnitt_westreise(void) {
   pruefe("  und um 08:00 Ortszeit klopft sie nicht nochmal", !wecker_um(480, 2026, 7, 15, 8, 0));
 }
 
+// --- Ueber Mitternacht: vor Mitternacht Abgehaktes kommt nicht wieder ---
+// Mg und Ca um 23:50. Nach Mitternacht kennt die Uhr die Haken von gestern
+// nicht mehr (plan.c) - die Erinnerung darf trotzdem nur zeigen, was noch
+// offen ist.
+static void mg_abhaken(void) {
+  s_lief++;
+  attrappe_taste(BUTTON_ID_SELECT);   // gewaehlt ist Platz 0: Mg
+}
+static void mg_und_ca(void) {
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, false);
+  platz_setzen(0, "Mg", 23, 50, 1, heute);
+  platz_setzen(1, "Ca", 23, 50, 1, heute);
+}
+static void abschnitt_mitternacht_teilweise(void) {
+  printf("\nUeber Mitternacht: um 23:55 Abgehaktes zeigt der Aufschub nicht\n");
+  mg_und_ca();
+  stub_jetzt = ortszeit(2026, 7, 14, 23, 50);
+  starten(APP_LAUNCH_WAKEUP, 1430, spaeter_druecken);
+  pruefe("23:50: Mg und Ca, \"spaeter\"", s_lief == 1 && strstr(s_gesehen, "Mg") && strstr(s_gesehen, "Ca"));
+  stub_jetzt = ortszeit(2026, 7, 14, 23, 55);
+  starten(APP_LAUNCH_USER, 0, mg_abhaken);
+  pruefe("23:55: auf dem Heute-Schirm nur Mg abgehakt", plan_taken(0) && !plan_taken(1));
+  const AttrappeWecker *a = aufschub_fuer(1430);
+  pruefe("  der Aufschub bleibt, Ca ist offen", a && ist_um(a->zeit, 2026, 7, 15, 0, 5));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, nichts_druecken);
+  pruefe("00:05: Ca, Aufschub 1 von 3", s_lief == 1 && strstr(s_gesehen, "Ca") && vermerk("Aufschub 1 von 3"));
+  pruefe("  ohne das abgehakte Mg", !strstr(s_gesehen, "Mg"));
+}
+// Die Erinnerung von 23:50 steht noch, als es Mitternacht wird.
+static void nach_mitternacht_zeichnen(void) {
+  s_lief++;
+  stub_jetzt = ortszeit(2026, 7, 15, 0, 1);
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+}
+static void abschnitt_mitternacht_fenster(void) {
+  printf("\nUeber Mitternacht: eine offene Erinnerung zeigt danach nichts Abgehaktes\n");
+  mg_und_ca();
+  stub_jetzt = ortszeit(2026, 7, 14, 23, 45);
+  starten(APP_LAUNCH_USER, 0, mg_abhaken);
+  stub_jetzt = ortszeit(2026, 7, 14, 23, 50);
+  starten(APP_LAUNCH_WAKEUP, 1430, nach_mitternacht_zeichnen);
+  pruefe("00:01 neu gezeichnet: Ca steht da", s_lief == 1 && strstr(s_gesehen, "23:50") && strstr(s_gesehen, "Ca"));
+  pruefe("  Mg (um 23:45 genommen) nicht", !strstr(s_gesehen, "Mg"));
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
@@ -557,7 +606,7 @@ static void (*const ABSCHNITTE[])(void) = {
   abschnitt_genommen_frist, abschnitt_genommen_offline, abschnitt_kur,
   abschnitt_aufschub_start, abschnitt_aufschub_offen, abschnitt_kurz_davor, abschnitt_mitternacht,
   abschnitt_mitternacht_zweitage,  abschnitt_andere_runde_genommen, abschnitt_andere_runde_weg,
-  abschnitt_westreise,
+  abschnitt_westreise, abschnitt_mitternacht_teilweise, abschnitt_mitternacht_fenster,
 };
 
 int main(void) {

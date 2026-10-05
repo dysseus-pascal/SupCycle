@@ -100,13 +100,31 @@ bool remind_launch_cookie(int32_t *cookie);
 // "Genommen" hakte nichts ab, und sie klopfte zur Ortszeit nochmal.
 int32_t remind_runden_tag(int32_t cookie);
 
-// Die Runde zu dieser Uhrzeit vom Kalendertag `tag` in SC_SNOOZE_MIN Minuten
-// nochmal. Zaehlt mit; ein Aufschub zu einer anderen Runde ersetzt den alten
-// und zaehlt von vorn. Der Zaehler ueberlebt das Klopfen des Aufschubs -
-// sonst waere jeder Aufschub der erste. Von vorn zaehlt erst eine andere
-// Runde oder ein neuer Tag; geloescht wird er beim Abhaken und Wegdruecken,
-// und sobald seine Runde heute erledigt ist (remind_schedule).
-void remind_snooze(int minute, int32_t tag);
+// Was ein Aufschub wiederbringt. Die Runde `minute` vom Kalendertag `tag`
+// gibt ihm Uhrzeit, Cookie und Zaehler; `plaetze` (je Platz des Plans ein
+// Bit) sind die Plaetze, die beim Aufschieben noch offen waren.
+//
+// DIE PLAETZE GELTEN, NICHT DIE UHRZEIT. Ueber Mitternacht kennt die Uhr die
+// Haken von gestern nicht mehr: ohne die Liste zeigte der Aufschub von 23:50
+// um 00:05 auch, was um 23:55 auf dem Heute-Schirm abgehakt wurde - eine
+// Erinnerung an Genommenes, schlimmer als keine. Bis Mitternacht schrumpft
+// die Liste mit jedem Haken (remind_schedule).
+typedef struct {
+  int minute;
+  int32_t tag;
+  uint8_t plaetze;
+} Aufschub;
+
+// Diesen Aufschub in SC_SNOOZE_MIN Minuten wiederbringen. Zaehlt mit; ein
+// Aufschub zu einer anderen Runde ersetzt den alten und zaehlt von vorn. Der
+// Zaehler ueberlebt das Klopfen des Aufschubs - sonst waere jeder Aufschub
+// der erste. Von vorn zaehlt erst eine andere Runde oder ein neuer Tag;
+// geloescht wird er beim Abhaken und Wegdruecken, und sobald seine Runde
+// heute erledigt ist (remind_schedule).
+void remind_snooze(const Aufschub *a);
+// Der gemerkte Aufschub. False, wenn keiner da ist oder er seine Plaetze
+// nicht kennt (gemerkt von sc-r und frueher): dann gilt seine ganze Runde.
+bool remind_aufschub(Aufschub *a);
 // Darf die Runde `minute` vom Kalendertag `tag` noch aufgeschoben werden?
 bool remind_snooze_left(int minute, int32_t tag);
 // Wie oft die Runde `minute` vom Kalendertag `tag` schon aufgeschoben wurde.

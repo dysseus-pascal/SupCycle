@@ -459,11 +459,19 @@ neu. Lag der Aufschub (oder eine Runde) weniger als 30 s voraus, fiel er bis
 kam nie. Jetzt klopft er höchstens 31 s nach dem Öffnen.
 
 **Über Mitternacht bleibt es die Runde des Vortags.** 23:50 aufgeschoben
-klopft um 00:05, zählt weiter und zeigt, was am Vortag anstand. Bis 0.15.0
-klopfte ein Aufschub über Mitternacht nie. „Genommen" hakt dann nichts ab:
-die Haken gelten für heute, und der von heute gehört der Runde 23:50 von
+klopft um 00:05, zählt weiter und zeigt, was von ihr noch offen ist. Bis
+0.15.0 klopfte ein Aufschub über Mitternacht nie. „Genommen" hakt dann nichts
+ab: die Haken gelten für heute, und der von heute gehört der Runde 23:50 von
 heute — sie soll am Abend wieder klopfen. Wurde die Runde vor Mitternacht auf
 dem Heute-Schirm abgehakt, ist ihr Aufschub vorbei.
+
+**Was vor Mitternacht abgehakt wurde, bleibt weg.** Nach Mitternacht kennt die
+Uhr die Haken von gestern nicht mehr. Der Aufschub merkt sich deshalb seine
+Plätze (Persist-Fach 11), und jeder Haken bis Mitternacht streicht einen:
+Mg und Ca um 23:50 aufgeschoben, um 23:55 Mg abgehakt — um 00:05 steht nur Ca
+da. Ebenso zeigt eine Erinnerung, die über Mitternacht offen steht, nur, was
+bei ihrem Erscheinen offen war. Bis sc-r2 stand das Abgehakte wieder als
+fällig da.
 
 **Gestern gilt nur ein Aufschub.** Ein gewöhnlicher Wecker ist immer die Runde
 von heute — auch nach einer Reise nach Westen, wenn der Wecker von 08:00
@@ -665,9 +673,9 @@ Telefon steht „aus“). Umgekehrt ersetzte ein
 Umschalten der Animation die sechs Zeiten durch eine Zahl. Jetzt holt die Uhr
 einen Zeitenblock aus Fach 4 einmal nach Fach 8 und räumt Fach 4; die
 Animation gilt dabei als an, bis man sie wieder umstellt. Belegt sind: 1 bis 3,
-8 und 9 `plan.c`, 4 `prefs.c`, 5 bis 7 und 10 `remind.c`. `plan_host_test`
+8 und 9 `plan.c`, 4 `prefs.c`, 5 bis 7, 10 und 11 `remind.c`. `plan_host_test`
 prüft nach einem Lauf mit Umstellung, Haken, Animation und Aufschub, dass nur
-diese zehn Fächer beschrieben sind, jedes mit einer Länge, und dass nach einem
+diese elf Fächer beschrieben sind, jedes mit einer Länge, und dass nach einem
 Neustart jede Datei ihren eigenen Wert liest.
 
 ## Health Connect (über Boulder)

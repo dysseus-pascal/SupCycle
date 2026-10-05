@@ -1,6 +1,6 @@
 #include "prefs.h"
 
-#define PERSIST_FX 4    // plan.c belegt 1..3, 8 und 9, remind.c 5..7 und 10 - siehe prefs.h
+#define PERSIST_FX 4    // plan.c belegt 1..3, 8 und 9, remind.c 5..7, 10 und 11 - siehe prefs.h
 
 static bool s_fx = true;
 
