@@ -598,6 +598,60 @@ static void abschnitt_mitternacht_fenster(void) {
   pruefe("  Mg (um 23:45 genommen) nicht", !strstr(s_gesehen, "Mg"));
 }
 
+// --- "Spaeter" im zusammengefuehrten Fenster ---
+// Die Erinnerung von 08:00 bleibt unbeantwortet stehen, um 12:30 kommt Maca
+// dazu. "Spaeter" muss alle drei wiederbringen, nicht nur die neueste Runde.
+static void dazu_und_spaeter(void) {
+  s_lief++;
+  attrappe_wecker_feuert();          // die naechste Runde bei offener Erinnerung
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+  attrappe_taste(BUTTON_ID_DOWN);
+}
+static void abschnitt_spaeter_alle(void) {
+  printf("\n\"Spaeter\" im zusammengefuehrten Fenster bringt alle Runden wieder\n");
+  uhr(datum_tag(2026, 7, 14), false);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0);
+  starten(APP_LAUNCH_WAKEUP, 480, dazu_und_spaeter);
+  pruefe("12:30: Zink, D3 und Maca in einem Fenster, \"spaeter\"",
+         s_lief == 1 && strstr(s_gesehen, "12:30") && strstr(s_gesehen, "Zink") &&
+         strstr(s_gesehen, "D3") && strstr(s_gesehen, "Maca"));
+  const AttrappeWecker *a = aufschub_fuer(750);
+  pruefe("  ein Aufschub, 12:45", a && ist_um(a->zeit, 2026, 7, 14, 12, 45));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, genommen_druecken);
+  pruefe("12:45: alle drei kommen wieder, Aufschub 1 von 3",
+         s_lief == 1 && strstr(s_gesehen, "12:30") && strstr(s_gesehen, "Zink") && strstr(s_gesehen, "D3") &&
+         strstr(s_gesehen, "Maca") && vermerk("Aufschub 1 von 3"));
+  pruefe("  \"genommen\" hakt alle drei ab", plan_taken(0) && plan_taken(1) && plan_taken(2));
+}
+// Dasselbe ueber Mitternacht: Mg von gestern (Aufschub um 00:05), um 00:10
+// kommt Ca von heute dazu. "Spaeter" bringt beide; genommen wird nur Ca
+// abgehakt - Mg ist die Runde von gestern.
+static void abschnitt_spaeter_vortag(void) {
+  printf("\n\"Spaeter\" bringt auch die Runde von gestern wieder\n");
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, false);
+  platz_setzen(3, "Mg", 23, 50, 1, heute);
+  platz_setzen(4, "Ca", 0, 10, 1, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 23, 50);
+  starten(APP_LAUNCH_WAKEUP, 1430, spaeter_druecken);
+  const AttrappeWecker *a = aufschub_fuer(1430);
+  if (!a) { pruefe("der Aufschub von 23:50 steht", false); return; }
+  stub_jetzt = a->zeit;                // 00:05
+  starten(APP_LAUNCH_WAKEUP, a->cookie, dazu_und_spaeter);
+  pruefe("00:10: Mg von gestern und Ca in einem Fenster, \"spaeter\"",
+         s_lief == 1 && strstr(s_gesehen, "00:10") && strstr(s_gesehen, "Mg") && strstr(s_gesehen, "Ca"));
+  a = aufschub_fuer(10);
+  pruefe("  ein Aufschub, 00:25", a && ist_um(a->zeit, 2026, 7, 15, 0, 25));
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  starten(APP_LAUNCH_WAKEUP, a->cookie, genommen_druecken);
+  pruefe("00:25: Mg und Ca kommen wieder", s_lief == 1 && strstr(s_gesehen, "Mg") && strstr(s_gesehen, "Ca"));
+  pruefe("  genommen: Ca abgehakt, Mg nicht (gestern)", plan_taken(4) && !plan_taken(3));
+}
+
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
@@ -607,6 +661,7 @@ static void (*const ABSCHNITTE[])(void) = {
   abschnitt_aufschub_start, abschnitt_aufschub_offen, abschnitt_kurz_davor, abschnitt_mitternacht,
   abschnitt_mitternacht_zweitage,  abschnitt_andere_runde_genommen, abschnitt_andere_runde_weg,
   abschnitt_westreise, abschnitt_mitternacht_teilweise, abschnitt_mitternacht_fenster,
+  abschnitt_spaeter_alle, abschnitt_spaeter_vortag,
 };
 
 int main(void) {

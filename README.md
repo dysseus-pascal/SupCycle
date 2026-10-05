@@ -522,8 +522,10 @@ zu, und die Erinnerung verpuffte samt dem nächsten Weckplan.
 **Auch bei offener Erinnerung.** Steht die Erinnerung von 08:00 noch
 unbeantwortet da (sie geht nicht von selbst zu), und um 12:30 klopft die
 nächste Runde, kommt sie dazu: es vibriert neu, und beide stehen da, oben die
-neue Uhrzeit. „Genommen“ hakt alle ab. „Später“ gilt der neuen Runde — es gibt
-nur einen Aufschub —, die ältere bleibt auf dem Heute-Schirm offen. Bis 0.15.0
+neue Uhrzeit. „Genommen“ hakt alle ab. „Später“ bringt alle wieder, die
+dastehen; Uhrzeit und Zähler sind die der neuen Runde — es gibt nur einen
+Aufschub. Bis sc-r2 galt er nur der neuen, und die ältere hatte heute still
+keinen Wecker mehr, obwohl sie nie bewusst liegen gelassen war. Bis 0.15.0
 schluckte ein liegen gelassenes Fenster jede weitere Runde des Tages: keine
 Vibration, nichts zu sehen, und ihr Wecker war verbraucht. Klopft eine Runde,
 während die Erinnerung nach dem Abhaken nur noch auf das Telefon wartet,

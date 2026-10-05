@@ -615,6 +615,27 @@ static void abschnitt_erledigt(void) {
          remind_runden_tag(COOKIE_AUFSCHUB + 750) == heute + 1);
 }
 
+// Ein Aufschub mit Plaetzen von heute und vom Vortag (Fenster ueber
+// Mitternacht zusammengefuehrt): erledigt ist er erst, wenn beides erledigt
+// ist - den Vortag kann man nicht mehr abhaken, er bleibt offen.
+static void abschnitt_vortag(void) {
+  printf("\nAufschub mit Plaetzen vom Vortag\n");
+  const int J = 2026, M = 7, T = 14;
+  const int32_t heute = datum_tag(J, M, T);
+  Platz zwei[] = { { "Mg", 23, 50, 1, 0, 0, heute - 10 }, { "Ca", 0, 10, 1, 0, 0, heute - 10 } };
+  frisch(ortszeit(J, M, T + 1, 0, 10));
+  plan_setzen(zwei, 2);
+  const Aufschub a = { .minute = 10, .tag = heute + 1, .plaetze = 0x02, .plaetze_vortag = 0x01 };
+  remind_snooze(&a);
+  pruefe("00:10 aufgeschoben: er klopft um 00:25", wecker_um(COOKIE_AUFSCHUB + 10, J, M, T + 1, 0, 25));
+  stub_jetzt = ortszeit(J, M, T + 1, 0, 15);
+  plan_set_taken(1, true);        // Ca auf dem Heute-Schirm
+  remind_schedule();
+  pruefe("Ca abgehakt, Mg von gestern offen: er bleibt", wecker_um(COOKIE_AUFSCHUB + 10, J, M, T + 1, 0, 25));
+  Aufschub b;
+  pruefe("  mit Mg vom Vortag und ohne Ca", remind_aufschub(&b) && b.plaetze == 0 && b.plaetze_vortag == 0x01);
+}
+
 int main(void) {
   printf("Zeitzone: %s\n", getenv("TZ") ? getenv("TZ") : "(Rechner)");
   abschnitt_vorausplanen();
@@ -626,6 +647,7 @@ int main(void) {
   abschnitt_kurz_davor();
   abschnitt_mitternacht();
   abschnitt_erledigt();
+  abschnitt_vortag();
   printf("%s\n", s_fehler ? "NICHT BESTANDEN" : "alles bestanden");
   return s_fehler ? 1 : 0;
 }

@@ -356,9 +356,10 @@ static void prv_dismiss(ClickRecognizerRef recognizer, void *context) {
   prv_close();
 }
 
-// ES GIBT EINEN AUFSCHUB, NICHT MEHRERE (remind.h): er gilt der neuesten
-// Runde. Aeltere im selben Fenster hatten ihre Erinnerung schon; sie bleiben
-// auf dem Heute-Schirm offen, wie nach dem Wegdruecken.
+// ES GIBT EINEN AUFSCHUB, NICHT MEHRERE (remind.h): Uhrzeit und Zaehler sind
+// die der neuesten Runde. Er bringt aber ALLES wieder, was im Fenster steht -
+// auch aeltere Runden, die dazukamen, waehrend es unbeantwortet stand. Bis
+// sc-r2 fielen sie hier still weg.
 static void prv_later(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
   const Runde neueste = *prv_neueste();
@@ -368,7 +369,18 @@ static void prv_later(ClickRecognizerRef recognizer, void *context) {
     return;
   }
   prv_stop_vibes();
-  const Aufschub a = { .minute = neueste.minute, .tag = neueste.tag, .plaetze = prv_plaetze_in(&neueste) };
+  Aufschub a = { .minute = neueste.minute, .tag = neueste.tag };
+  for (int k = 0; k < s_runden_zahl; k++) {
+    const Runde *r = &s_runden[k];
+    if (r->tag == neueste.tag) {
+      a.plaetze |= prv_plaetze_in(r);
+    } else if (r->tag == neueste.tag - 1) {
+      a.plaetze_vortag |= prv_plaetze_in(r);
+    } else {
+      // Zwei Mitternaechte unbeantwortet: so alt bringt kein Aufschub mehr.
+      APP_LOG(APP_LOG_LEVEL_WARNING, "Runde %d vom Tag %d kommt nicht wieder", r->minute, (int)r->tag);
+    }
+  }
   remind_snooze(&a);
   prv_close();
 }
@@ -422,25 +434,30 @@ static void prv_unload(Window *window) {
 bool reminder_window_push(int32_t cookie) {
   const int minute = remind_cookie_minute(cookie);
   Runde neu = { .minute = minute, .tag = remind_runden_tag(cookie) };
-  // Ein Aufschub bringt seine Plaetze wieder (remind.h); einer ohne (von
-  // sc-r und frueher gemerkt) die ganze Runde seiner Uhrzeit.
+  // Ein Aufschub bringt seine Plaetze wieder (remind.h), die vom Vortag als
+  // eigene Runde davor; einer ohne Plaetze (von sc-r und frueher gemerkt)
+  // die ganze Runde seiner Uhrzeit.
+  Runde vortag = { .minute = minute, .tag = neu.tag - 1 };
   Aufschub a;
   if (remind_cookie_aufschub(cookie) && remind_aufschub(&a) && a.minute == minute && a.tag == neu.tag) {
     neu.plaetze = a.plaetze;
+    if (vortag.tag >= plan_today() - 1) vortag.plaetze = a.plaetze_vortag;
   } else {
     neu.plaetze = prv_offene_plaetze(minute, neu.tag);
   }
   if (s_window) {
     // Das Fenster steht noch. Die neue Runde kommt dazu, wenn es zu ihr
     // etwas zu nehmen gibt.
-    if (prv_zahl_in(&neu) == 0) return true;
+    if (prv_zahl_in(&neu) == 0 && prv_zahl_in(&vortag) == 0) return true;
     if (s_geht) {
       // Schon abgehakt, der Schirm gehoert der Animation und dem Warten auf
       // das Telefon - danach ist sie dran (prv_nach_telefon).
+      if (vortag.plaetze) prv_merken(s_danach, &s_danach_zahl, vortag);
       prv_merken(s_danach, &s_danach_zahl, neu);
       APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d kommt nach dem Warten", minute);
       return true;
     }
+    if (vortag.plaetze) prv_merken(s_runden, &s_runden_zahl, vortag);
     prv_merken(s_runden, &s_runden_zahl, neu);
     APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d kommt zum offenen Fenster dazu", minute);
     prv_klopfen();
@@ -449,6 +466,7 @@ bool reminder_window_push(int32_t cookie) {
   }
   s_runden_zahl = 0;
   s_danach_zahl = 0;
+  if (vortag.plaetze) prv_merken(s_runden, &s_runden_zahl, vortag);
   prv_merken(s_runden, &s_runden_zahl, neu);
   if (prv_batch_count() == 0) return false;  // nichts offen: gar nicht erst zeigen
 

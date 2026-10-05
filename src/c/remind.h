@@ -102,7 +102,15 @@ int32_t remind_runden_tag(int32_t cookie);
 
 // Was ein Aufschub wiederbringt. Die Runde `minute` vom Kalendertag `tag`
 // gibt ihm Uhrzeit, Cookie und Zaehler; `plaetze` (je Platz des Plans ein
-// Bit) sind die Plaetze, die beim Aufschieben noch offen waren.
+// Bit) sind die Plaetze, die beim Aufschieben noch offen waren - von ALLEN
+// Runden im Fenster, die von diesem Tag sind, `plaetze_vortag` die vom Tag
+// davor (eine Runde von gestern, deren Aufschub ueber Mitternacht klopfte).
+//
+// ALLE RUNDEN DES FENSTERS KOMMEN WIEDER. Steht die Erinnerung von 08:00
+// unbeantwortet, und 12:30 kommt dazu, zeigt das Fenster beide. Bis sc-r2
+// galt "spaeter" dann nur 12:30: Zink und D3 von 08:00 hatten heute keinen
+// Wecker mehr, ohne dass es irgendwo stand. Liegen gelassen hat man sie
+// nicht bewusst - "spaeter" war die erste Antwort auf sie.
 //
 // DIE PLAETZE GELTEN, NICHT DIE UHRZEIT. Ueber Mitternacht kennt die Uhr die
 // Haken von gestern nicht mehr: ohne die Liste zeigte der Aufschub von 23:50
@@ -113,6 +121,7 @@ typedef struct {
   int minute;
   int32_t tag;
   uint8_t plaetze;
+  uint8_t plaetze_vortag;
 } Aufschub;
 
 // Diesen Aufschub in SC_SNOOZE_MIN Minuten wiederbringen. Zaehlt mit; ein

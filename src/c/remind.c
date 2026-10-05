@@ -22,7 +22,8 @@
 // Der Tag der aufgeschobenen Runde. Der Zaehler gilt nur an diesem Tag: die
 // Runde 08:00 von morgen ist ein neuer Anlass und faengt bei null an.
 #define PERSIST_SNOOZE_TAG    10
-// Die Plaetze, die der Aufschub wiederbringt (je Platz ein Bit). Ueber
+// Die Plaetze, die der Aufschub wiederbringt (je Platz ein Bit): im unteren
+// Byte die vom Tag seiner Runde, im zweiten die vom Tag davor. Ueber
 // Mitternacht kennt die Uhr die Haken von gestern nicht mehr (plan.c) - ohne
 // diese Liste zeigte der Aufschub von 23:50 um 00:05 auch, was um 23:55 auf
 // dem Heute-Schirm abgehakt wurde. Bis Mitternacht schrumpft sie mit jedem
@@ -42,10 +43,15 @@ static bool prv_snooze_tag(int32_t *tag) {
 }
 // Ohne das Fach (Aufschub von sc-r und frueher) false: dann gilt die ganze
 // Runde seiner Uhrzeit, wie damals.
-static bool prv_snooze_plaetze(uint8_t *plaetze) {
+static bool prv_snooze_plaetze(uint8_t *plaetze, uint8_t *vortag) {
   if (!persist_exists(PERSIST_SNOOZE_PLAETZE)) return false;
-  *plaetze = (uint8_t)persist_read_int(PERSIST_SNOOZE_PLAETZE);
+  const int32_t wert = persist_read_int(PERSIST_SNOOZE_PLAETZE);
+  *plaetze = (uint8_t)(wert & 0xFF);
+  *vortag = (uint8_t)((wert >> 8) & 0xFF);
   return true;
+}
+static void prv_snooze_plaetze_schreiben(uint8_t plaetze, uint8_t vortag) {
+  persist_write_int(PERSIST_SNOOZE_PLAETZE, (int32_t)plaetze | ((int32_t)vortag << 8));
 }
 
 // Wie oft die Runde `minute` vom Kalendertag `tag` schon aufgeschoben wurde.
@@ -100,14 +106,16 @@ void remind_snooze(const Aufschub *a) {
   persist_write_int(PERSIST_SNOOZE_MINUTE, a->minute);
   persist_write_int(PERSIST_SNOOZE_COUNT, count);
   persist_write_int(PERSIST_SNOOZE_TAG, (int)a->tag);
-  persist_write_int(PERSIST_SNOOZE_PLAETZE, a->plaetze);
-  APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub %d fuer Minute %d vom Tag %d, Plaetze %02x", count, a->minute,
-          (int)a->tag, a->plaetze);
+  prv_snooze_plaetze_schreiben(a->plaetze, a->plaetze_vortag);
+  APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub %d fuer Minute %d vom Tag %d, Plaetze %02x/%02x", count, a->minute,
+          (int)a->tag, a->plaetze, a->plaetze_vortag);
   remind_schedule();
 }
 bool remind_aufschub(Aufschub *a) {
   const int minute = prv_snooze_minute();
-  if (minute < 0 || !prv_snooze_tag(&a->tag) || !prv_snooze_plaetze(&a->plaetze)) return false;
+  if (minute < 0 || !prv_snooze_tag(&a->tag) || !prv_snooze_plaetze(&a->plaetze, &a->plaetze_vortag)) {
+    return false;
+  }
   a->minute = minute;
   return true;
 }
@@ -193,22 +201,23 @@ static bool prv_wird_wieder_faellig(void) {
 }
 
 // Ist vom gemerkten Aufschub (Runde `minute` vom Kalendertag `runde`) noch
-// etwas offen? Mit Plaetzen: die davon, die an dem Tag noch anstehen und -
+// etwas offen? Mit Plaetzen: die davon, die an ihrem Tag noch anstehen und -
 // heute - nicht abgehakt sind; dabei schrumpft die Liste mit jedem Haken, denn
-// nach Mitternacht weiss die Uhr nichts mehr davon. Ohne Plaetze (Aufschub
-// von sc-r und frueher) die ganze Runde seiner Uhrzeit.
+// nach Mitternacht weiss die Uhr nichts mehr davon. Die Plaetze vom Vortag
+// zaehlen, solange der Vortag gestern ist. Ohne Plaetze (Aufschub von sc-r
+// und frueher) die ganze Runde seiner Uhrzeit.
 static bool prv_aufschub_offen(int32_t runde, int minute) {
   const bool heute = runde == plan_today();
-  uint8_t plaetze;
-  if (!prv_snooze_plaetze(&plaetze)) return prv_noch_offen(runde, minute, heute);
-  uint8_t noch = 0;
+  uint8_t plaetze, vortag;
+  if (!prv_snooze_plaetze(&plaetze, &vortag)) return prv_noch_offen(runde, minute, heute);
+  uint8_t noch = 0, noch_vortag = 0;
   for (int i = 0; i < SC_MAX_ITEMS; i++) {
-    if (!(plaetze & (1u << i)) || !plan_due_on(i, runde)) continue;
-    if (heute && plan_taken(i)) continue;
-    noch |= (uint8_t)(1u << i);
+    const uint8_t bit = (uint8_t)(1u << i);
+    if ((plaetze & bit) && plan_due_on(i, runde) && !(heute && plan_taken(i))) noch |= bit;
+    if ((vortag & bit) && heute && plan_due_on(i, runde - 1)) noch_vortag |= bit;
   }
-  if (heute && noch != plaetze) persist_write_int(PERSIST_SNOOZE_PLAETZE, noch);
-  return noch != 0;
+  if (heute && noch != plaetze) prv_snooze_plaetze_schreiben(noch, vortag);
+  return noch != 0 || noch_vortag != 0;
 }
 
 void remind_schedule(void) {
