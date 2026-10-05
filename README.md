@@ -336,14 +336,20 @@ sh tools/remind_host_test.sh    # Weckplan: 60 Tage voraus, Wecker zum Neuplanen
 sh tools/app_host_test.sh       # die ganze App: Weckstarts, Wecker bei offener App, Genommen und Telefon, Zyklusseite, Aufschub (drei Zonen)
 node tools/pkjs_start_test.js   # Startzweige der Telefonseite, Antwort auf die Frage nach der Zeit
 node tools/pkjs_tage_test.js    # Kalendertage und Anker auf der Telefonseite, Anker durch die Konfigseite
-node tools/pkjs_clay_test.js    # Namen mit $ und < durch das echte Clay (npm install)
+node tools/pkjs_clay_test.js    # Namen mit $ und < durch das echte Clay (nach npm install und pebble build)
 node tools/catch_check.js       # kein catch ohne Log in der Telefonseite
 sh tools/alle_tests.sh          # alles oben ohne Emulator, Node-Tests in drei Zonen - so läuft es in der CI
 ```
 
+Den Clay-Test erst nach `pebble build`: `npm install` legt Clay nur als
+`dist.zip` ab, entpackt wird es beim Bau. Ohne Bau geht es so:
+`python3 -m zipfile -e node_modules/@rebble/clay/dist.zip node_modules/@rebble/clay/dist`.
+
 **Die CI prüft vor dem Bauen** (`.github/workflows/bauen.yml`, Schritt
 „Prüfen“): ein roter Test bricht den Lauf ab, dann wird nichts gebaut,
-eingecheckt oder veröffentlicht.
+eingecheckt oder veröffentlicht. Clay entpackt sie dafür schon im Schritt
+„Clay holen“ — bis dahin fand der Clay-Test es in der CI nicht, und jeder Lauf
+auf `main` endete rot, ohne pbw.
 
 `src/c/cycle.c` hängt bewusst an nichts — kein `pebble.h`, nur Ganzzahlen. Das
 ist hier kein Selbstzweck: **eine Zyklusrechnung, die um einen Tag danebenliegt,

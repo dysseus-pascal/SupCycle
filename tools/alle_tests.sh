@@ -7,7 +7,9 @@
 # Die C-Tests (tools/*host_test.sh) waehlen ihre Zeitzonen selbst; die
 # Node-Tests laufen hier je in Zuerich, London und New York - die Tage der
 # Telefonseite haengen an der Zone des Telefons. pkjs_clay_test.js braucht
-# Clay aus node_modules (npm install).
+# Clay entpackt in node_modules/@rebble/clay/dist: npm install legt nur
+# dist.zip ab, entpackt wird beim Bau (pebble build) - ohne Bau so wie die CI:
+#   python3 -m zipfile -e node_modules/@rebble/clay/dist.zip node_modules/@rebble/clay/dist
 #
 # Exitcode 0 = alles bestanden; jeder rote Test macht ihn 1.
 DIR=$(cd "$(dirname "$0")/.." && pwd)

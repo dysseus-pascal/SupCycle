@@ -49,8 +49,16 @@ jobs:
           pip install --quiet pebble-tool
           pebble sdk install latest < /dev/null
 
+      # NPM LIEFERT CLAY NUR ALS dist.zip. Nach dist/ entpackt es sonst erst
+      # "pebble build" (mit Pythons zipfile) - der Clay-Test der Telefonseite
+      # laeuft aber vorher und liest dist/js/index.js. Bis zu diesem Schritt
+      # war die CI deshalb rot, ohne dass es lokal auffiel: dort lag dist/ von
+      # einem frueheren Bau. Darum hier genau so entpacken; "Uebersetzen"
+      # macht es spaeter noch einmal.
       - name: Clay holen
-        run: npm install --no-audit --no-fund
+        run: |
+          npm install --no-audit --no-fund
+          python -m zipfile -e node_modules/@rebble/clay/dist.zip node_modules/@rebble/clay/dist
 
       # Vor dem Uebersetzen: ein roter Test bricht hier ab.
       - name: Pruefen

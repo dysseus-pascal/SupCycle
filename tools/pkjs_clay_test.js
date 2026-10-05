@@ -1,6 +1,10 @@
 // Praeparatnamen mit '$' und '<' durch die echte Konfigseite (Clay).
 //
-//   node tools/pkjs_clay_test.js        (braucht npm install: @rebble/clay)
+//   node tools/pkjs_clay_test.js        (nach npm install und pebble build)
+//
+// npm install legt Clay nur als dist.zip ab; nach dist/ entpackt es erst
+// pebble build - oder, ohne Bau, wie die CI:
+//   python3 -m zipfile -e node_modules/@rebble/clay/dist.zip node_modules/@rebble/clay/dist
 //
 // Was hier leicht falsch und teuer ist (Audit N8): Clay setzt die
 // gespeicherten Werte mit String.replace in die Seite ein. '$&', "$'", '$`'
@@ -37,7 +41,18 @@ Module._load = function (anfrage) {
   return ladeModul.apply(this, arguments);
 };
 // Wie im Pebble-Bau: das Paket liefert dist/js/index.js als pkjs-Teil.
-const Clay = Module.createRequire(SRC)('@rebble/clay/dist/js/index.js');
+const CLAY = path.join(__dirname, '..', 'node_modules', '@rebble', 'clay', 'dist', 'js', 'index.js');
+if (!fs.existsSync(CLAY)) {
+  // npm install allein reicht nicht: Clay liegt dann nur als dist.zip da. Ohne
+  // diesen Hinweis endete der Test mit MODULE_NOT_FOUND, und die CI war rot,
+  // ohne dass man sah, warum.
+  console.log('  FEHLER Clay fehlt (' + CLAY + ') - erst npm install und pebble build,'
+              + ' oder dist.zip entpacken: python3 -m zipfile -e'
+              + ' node_modules/@rebble/clay/dist.zip node_modules/@rebble/clay/dist');
+  console.log('Fehler: 1');
+  process.exit(1);
+}
+const Clay = Module.createRequire(SRC)(CLAY);
 
 // Eine Welt: index.js mit dem echten Clay. Clay greift auf die globalen
 // Pebble und localStorage zu - dieselben wie in der Welt von index.js.
