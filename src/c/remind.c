@@ -164,6 +164,9 @@ void remind_schedule(void) {
   // ist. Er gilt der Runde von heute oder der von gestern: 23:50
   // aufgeschoben klopft um 00:05 (bis 0.15.0 nur am selben Tag, und so
   // klopfte ein Aufschub ueber Mitternacht nie). Aelter wird keiner.
+  // Der frueheste Wecker, der die App oeffnet und damit neu plant (Aufschub
+  // oder Erinnerung); 0 = keiner.
+  time_t erste = 0;
   const time_t snooze_at = prv_snooze_at();
   const int snooze_minute = prv_snooze_minute();
   if (snooze_at > 0) {
@@ -178,7 +181,11 @@ void remind_schedule(void) {
     const bool gilt = snooze_at > now && offen && (runde == heute || gestern) &&
         (klopft == runde || klopft == runde + 1);
     if (gilt) {
-      if (prv_schedule(prv_fruehestens(snooze_at, now), COOKIE_SNOOZE + snooze_minute, true)) n++;
+      const time_t wann = prv_fruehestens(snooze_at, now);
+      if (prv_schedule(wann, COOKIE_SNOOZE + snooze_minute, true)) {
+        n++;
+        erste = wann;
+      }
     } else if (snooze_at <= now) {
       // Verstrichen: meist hat er eben geklopft, sonst verpasste ihn die Uhr
       // (aus, Wecker verworfen). Vorbei ist nur der WECKER. Den Zaehler
@@ -212,9 +219,12 @@ void remind_schedule(void) {
   // So weit voraus, bis die Erinnerungen gefunden sind - ein Platz bleibt
   // dem Wecker zum Neuplanen. Gerechnet in Kalendertagen; die Uhrzeit je Tag
   // kommt aus kalender_zeit_am, damit ein Wecker nach einer Umstellung nicht
-  // eine Stunde daneben liegt (Audit M2).
+  // eine Stunde daneben liegt (Audit M2). Hinter SC_VORAUS_TAGE nur, solange
+  // noch keine Erinnerung gefunden ist: dann bis zum ersten faelligen Tag.
   const int32_t heute = plan_today();
-  for (int day = 0; day < SC_VORAUS_TAGE && n < MAX_WAKEUPS - 1; day++) {
+  int gefunden = 0;
+  for (int day = 0; day < SC_SUCHE_TAGE && n < MAX_WAKEUPS - 1; day++) {
+    if (day >= SC_VORAUS_TAGE && gefunden > 0) break;
     const int32_t the_day = heute + day;
 
     // Je Minute des Tages hoechstens ein Wecker, auch wenn mehrere Praeparate
@@ -241,8 +251,16 @@ void remind_schedule(void) {
 
       const time_t at = kalender_zeit_am(the_day, best);
       if (at <= now) continue;     // heute schon vorbei
-      if (prv_schedule(prv_fruehestens(at, now), best, true)) n++;
+      gefunden++;
+      const time_t wann = prv_fruehestens(at, now);
+      if (prv_schedule(wann, best, true)) {
+        n++;
+        if (erste == 0 || wann < erste) erste = wann;
+      }
     }
+  }
+  if (gefunden == 0) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "In %d Tagen keine Erinnerung faellig", SC_SUCHE_TAGE);
   }
 
   // Zuletzt der Wecker zum Neuplanen, auf den letzten Platz: die naechste
@@ -250,7 +268,16 @@ void remind_schedule(void) {
   // Zeiten; kaeme er einer in die Quere, weicht er aus (prv_schedule).
   time_t neu = kalender_zeit_am(heute, SC_NEUPLANEN_MINUTE);
   if (neu <= now + LEAD_S) neu = kalender_zeit_am(heute + 1, SC_NEUPLANEN_MINUTE);
-  if (prv_schedule(neu, COOKIE_NEUPLANEN, false)) n++;
+  // NICHT GEGEN DAS 03:00 VON MORGEN, sondern gegen das danach: nach der
+  // letzten Runde des Abends liegt die naechste Erinnerung (morgen frueh)
+  // immer hinter dem naechsten 03:00. Mit diesem Vergleich stuende der Wecker
+  // bei taeglichen Praeparaten wieder jede Nacht.
+  const time_t danach = kalender_zeit_am(kalender_tag(neu) + 1, SC_NEUPLANEN_MINUTE);
+  if (erste > 0 && erste <= danach) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "Kein Wecker zum Neuplanen - die naechste Erinnerung plant neu");
+  } else if (prv_schedule(neu, COOKIE_NEUPLANEN, false)) {
+    n++;
+  }
   APP_LOG(APP_LOG_LEVEL_INFO, "%d Wecker gestellt", n);
 }
 

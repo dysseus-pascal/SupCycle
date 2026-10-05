@@ -9,8 +9,12 @@
 //   - DIE KETTE TRAEGT SICH SELBST (Audit W-K1). Bis 0.15.0 wurden nur zwei
 //     Tage voraus geplant: "alle 2 Tage", um 10 Uhr gestellt, ergab keinen
 //     einzigen Wecker, und die Erinnerungen hoerten still auf.
-//   - DER WECKER ZUM NEUPLANEN steht immer, jede Nacht um drei, und meldet
-//     sich nicht, wenn er verpasst wird.
+//   - DER WECKER ZUM NEUPLANEN steht nur, wenn sonst lange nichts klopft
+//     (Pause, Raster ueber einen Tag): er startet die App im Vordergrund und
+//     verdraengt, was um drei dort laeuft. Verpasst meldet er sich nicht.
+//   - EINE LANGE PAUSE haengt nicht allein an ihm: die erste Erinnerung
+//     danach steht auch, wenn sie weiter als 60 Tage voraus liegt - bis
+//     dahin riss die Kette, wenn die Uhr um 03:00 aus war.
 //   - DIE UHRZEIT GILT AM UMSTELLUNGSTAG (Audit M2): 08:00 am Sonntag der
 //     Umstellung ist 08:00 auf der Uhr, nicht 07:00 oder 09:00.
 //   - HOECHSTENS DREI AUFSCHUEBE. Bis 0.15.0 loeschte das Neustellen nach
@@ -89,12 +93,15 @@ static void plan_setzen(const Platz *p, int n) {
   }
   plan_set_from_bytes(b, sizeof(b));
 }
-// Frischer Start um `jetzt`: leerer Persist, keine Wecker.
+// Frischer Start um `jetzt`: leerer Persist, keine Wecker, kein Plan.
 static void frisch(time_t jetzt) {
   attrappe_persist_leeren();
   attrappe_wecker_leeren();
+  attrappe_log_leeren();
   stub_jetzt = jetzt;
   plan_init();
+  // plan_init laesst einen Plan im Speicher stehen, wenn das Fach leer ist.
+  plan_setzen(NULL, 0);
 }
 static int erinnerungen(void) {
   int n = 0;
@@ -111,6 +118,13 @@ static const AttrappeWecker *erinnerung(int k) {
   return NULL;
 }
 static const AttrappeWecker *erste_erinnerung(void) { return erinnerung(0); }
+// Steht ein Aufschub-Wecker fuer diese Runde?
+static bool aufschub_wecker_um(int minute) {
+  for (int i = 0; i < attrappe_wecker_zahl(); i++) {
+    if (attrappe_wecker(i)->cookie == COOKIE_AUFSCHUB + minute) return true;
+  }
+  return false;
+}
 static const AttrappeWecker *neuplanen(void) {
   const AttrappeWecker *gefunden = NULL;
   for (int i = 0; i < attrappe_wecker_zahl(); i++) {
@@ -165,9 +179,9 @@ static void abschnitt_vorausplanen(void) {
                     { "D", 13, 0, 1, 0, 0, heute }, { "E", 17, 0, 1, 0, 0, heute }, { "F", 21, 0, 1, 0, 0, heute } };
   plan_setzen(sechs, 6);
   remind_schedule();
-  pruefe("sechs taegliche: 8 Wecker, davon 7 Erinnerungen", attrappe_wecker_zahl() == 8 && erinnerungen() == 7);
+  pruefe("sechs taegliche: 7 Wecker, alle Erinnerungen", attrappe_wecker_zahl() == 7 && erinnerungen() == 7);
   pruefe("die siebte ist morgen 07:00", erinnerung(6) && ist_um(erinnerung(6)->zeit, J, M, T + 1, 7, 0));
-  pruefe("und der Wecker zum Neuplanen steht", neuplanen() != NULL);
+  pruefe("kein Wecker zum Neuplanen - die naechste Erinnerung plant neu", neuplanen() == NULL);
 
   // Heute schon genommen: heute keiner mehr fuer diese Runde, morgen schon.
   frisch(ortszeit(J, M, T, 7, 30));
@@ -185,15 +199,36 @@ static void abschnitt_neuplanen(void) {
   const int32_t heute = datum_tag(J, M, T);
 
   // Ein Zyklus mitten in einer langen Pause: in 60 Tagen nichts faellig.
-  // Bis 0.15.0 stand dann gar kein Wecker - jetzt der zum Neuplanen.
+  // Bis 0.15.0 stand dann gar kein Wecker; danach nur der zum Neuplanen.
+  // 1 Woche an, 52 aus, Anker vor 8 Tagen: wieder dran an heute + 363.
   frisch(ortszeit(J, M, T, 10, 0));
   Platz pause[] = { { "Maca", 8, 0, 1, 1, 52, heute - 8 } };
   plan_setzen(pause, 1);
   remind_schedule();
   const AttrappeWecker *n = neuplanen();
-  pruefe("lange Pause: keine Erinnerung, aber der Wecker zum Neuplanen", erinnerungen() == 0 && n != NULL);
+  pruefe("lange Pause: der Wecker zum Neuplanen steht", n != NULL);
   pruefe("er klopft morgen um 03:00", n && ist_um(n->zeit, J, M, T + 1, 3, 0));
   pruefe("verpasst meldet er sich nicht", n && !n->melden);
+  const AttrappeWecker *e = erste_erinnerung();
+  pruefe("und die erste Erinnerung nach der Pause steht: heute + 363, 08:00",
+         erinnerungen() >= 1 && e && ist_um(e->zeit, J, M, T + 363, 8, 0));
+  pruefe("  sie meldet sich, wenn die Uhr sie verpasst", e && e->melden);
+  if (!e) zeige("lange Pause");
+  // Die Uhr ist um 03:00 aus (Akku leer) und startet um 09:00: der stille
+  // Wecker ist weg, wie in pebbleos wakeup_init. Die Kette steht trotzdem.
+  attrappe_uhr_aus_bis(ortszeit(J, M, T + 1, 9, 0));
+  pruefe("Uhr um 03:00 aus: der Wecker zum Neuplanen ist weg", neuplanen() == NULL);
+  e = erste_erinnerung();
+  pruefe("  die Erinnerung nach der Pause steht noch", e && ist_um(e->zeit, J, M, T + 363, 8, 0));
+
+  // Nichts mehr faellig, auch nicht in SC_SUCHE_TAGE: eine beendete Kur.
+  frisch(ortszeit(J, M, T, 10, 0));
+  Platz kur_vorbei[] = { { "Rhodiola", 8, 0, 1, 4, 0, heute - 100 } };
+  plan_setzen(kur_vorbei, 1);
+  remind_schedule();
+  pruefe("beendete Kur: keine Erinnerung, der Wecker zum Neuplanen steht",
+         erinnerungen() == 0 && neuplanen() != NULL && attrappe_wecker_zahl() == 1);
+  pruefe("  und das steht im Log", strstr(attrappe_log_text, "keine Erinnerung faellig") != NULL);
 
   // Vor drei Uhr gestellt: noch heute.
   frisch(ortszeit(J, M, T, 2, 0));
@@ -223,6 +258,54 @@ static void abschnitt_neuplanen(void) {
   pruefe("Neuplanen ist keine Runde", remind_cookie_minute(COOKIE_NEUPLANEN) == -1 &&
                                       remind_cookie_neuplanen(COOKIE_NEUPLANEN));
   pruefe("Unsinn ist keine Runde", remind_cookie_minute(1440) == -1 && remind_cookie_minute(-1) == -1);
+}
+
+// Der Wecker zum Neuplanen startet die App im Vordergrund - um 03:00
+// verdraengt er, was gerade laeuft. Er steht nur, wenn bis zum 03:00 nach
+// dem naechsten keine Erinnerung kommt.
+static void abschnitt_neuplanen_selten(void) {
+  printf("\nDer Wecker zum Neuplanen nur, wenn sonst lange nichts klopft\n");
+  const int J = 2026, M = 7, T = 14;
+  const int32_t heute = datum_tag(J, M, T);
+  Platz taeglich[] = { { "Zink", 8, 0, 1, 0, 0, heute }, { "Maca", 12, 30, 1, 0, 0, heute } };
+
+  frisch(ortszeit(J, M, T, 7, 0));
+  plan_setzen(taeglich, 2);
+  remind_schedule();
+  pruefe("taeglich, um 07:00 gestellt: kein Wecker zum Neuplanen", neuplanen() == NULL && erinnerungen() == 7);
+  // Der Fall, um den es geht: nach der letzten Runde des Abends liegt die
+  // naechste (morgen 08:00) hinter dem naechsten 03:00.
+  frisch(ortszeit(J, M, T, 21, 0));
+  plan_setzen(taeglich, 2);
+  remind_schedule();
+  pruefe("taeglich, am Abend gestellt: auch nachts keiner", neuplanen() == NULL);
+  pruefe("  die naechste Erinnerung ist morgen 08:00", erste_erinnerung() && ist_um(erste_erinnerung()->zeit, J, M, T + 1, 8, 0));
+  if (neuplanen()) zeige("taeglich am Abend");
+
+  // Alle 2 Tage, heute dran und vorbei: uebermorgen 08:00 liegt hinter dem
+  // 03:00 nach dem naechsten - also morgen um drei neu planen.
+  Platz zwei[] = { { "Zink", 8, 0, 2, 0, 0, heute } };
+  frisch(ortszeit(J, M, T, 10, 0));
+  plan_setzen(zwei, 1);
+  remind_schedule();
+  const AttrappeWecker *n = neuplanen();
+  pruefe("alle 2 Tage, am Einnahmetag gestellt: Neuplanen morgen 03:00", n && ist_um(n->zeit, J, M, T + 1, 3, 0));
+  // Er klopft und plant neu: jetzt kommt die Erinnerung vor dem 03:00 danach.
+  stub_jetzt = ortszeit(J, M, T + 1, 3, 0);
+  remind_schedule();
+  pruefe("  um 03:00 neu geplant: in dieser Nacht keiner mehr", neuplanen() == NULL);
+  pruefe("  die Erinnerung bleibt: morgen 08:00", erste_erinnerung() && ist_um(erste_erinnerung()->zeit, J, M, T + 2, 8, 0));
+
+  // Ein Aufschub laeuft: er oeffnet die App ohnehin in 15 min.
+  frisch(ortszeit(J, M, T, 8, 0));
+  Platz pause[] = { { "Maca", 8, 0, 1, 1, 52, heute - 6 } };   // heute der letzte Einnahmetag
+  plan_setzen(pause, 1);
+  remind_snooze(480, heute);
+  pruefe("Pause ab morgen, aber ein Aufschub laeuft: kein Wecker zum Neuplanen",
+         aufschub_wecker_um(480) && neuplanen() == NULL);
+  remind_snooze_clear(480);
+  remind_schedule();
+  pruefe("  Aufschub vorbei: er steht wieder", neuplanen() != NULL);
 }
 
 // Taeglich 08:00, gestellt am Vortag 10:00: am Tag der Umstellung um 08:00.
@@ -278,7 +361,7 @@ static void abschnitt_aufschub(void) {
     if (attrappe_wecker(i)->cookie == COOKIE_AUFSCHUB + 480 && ist_um(attrappe_wecker(i)->zeit, 2026, 7, 14, 8, 17)) aufschub = true;
   }
   pruefe("Aufschub um 08:17 steht", aufschub);
-  pruefe("dazu der Wecker zum Neuplanen, zusammen 8", neuplanen() != NULL && attrappe_wecker_zahl() == 8);
+  pruefe("dazu sechs Erinnerungen, kein Wecker zum Neuplanen", neuplanen() == NULL && attrappe_wecker_zahl() == 7);
   remind_snooze_clear(480);
 }
 
@@ -473,6 +556,7 @@ int main(void) {
   printf("Zeitzone: %s\n", getenv("TZ") ? getenv("TZ") : "(Rechner)");
   abschnitt_vorausplanen();
   abschnitt_neuplanen();
+  abschnitt_neuplanen_selten();
   abschnitt_umstellung();
   abschnitt_aufschub();
   abschnitt_aufschub_zaehlt();

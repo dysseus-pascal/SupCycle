@@ -7,7 +7,8 @@
 // Was hier leicht falsch und teuer ist:
 //
 //   - DER WECKER ZUM NEUPLANEN (W-K1) darf nachts nichts zeigen und nichts
-//     senden: Wecker stellen, App zu.
+//     senden: Wecker stellen, App zu. Und er stellt sich nicht wieder, wenn
+//     eine Erinnerung vorher kommt.
 //   - EIN WECKER BEI OFFENER APP (W-H2) erinnert genauso wie einer, der die
 //     App startet - bis 0.15.0 verpuffte er. Auch bei offener ERINNERUNG:
 //     die naechste Runde vibriert und steht dazu, statt dass ein liegen
@@ -112,7 +113,9 @@ static void abschnitt_neuplanen(void) {
   pruefe("nichts ans Telefon", attrappe_gesendet() == 0 && attrappe_zeitgeber_offen() == 0);
   pruefe("keine Vibration", attrappe_vibrationen() == 0);
   pruefe("Erinnerung heute 08:00 neu gestellt", wecker_um(480, 2026, 7, 14, 8, 0));
-  pruefe("und der naechste Wecker zum Neuplanen morgen 03:00", wecker_um(COOKIE_NEUPLANEN, 2026, 7, 15, 3, 0));
+  // Taeglich: die Erinnerung um 08:00 plant ohnehin neu. Ein weiterer um
+  // 03:00 verdraengte nur, was dann im Vordergrund laeuft.
+  pruefe("kein naechster Wecker zum Neuplanen - die Erinnerung plant neu", !wecker_um(COOKIE_NEUPLANEN, 2026, 7, 15, 3, 0));
   pruefe("der Starter zeigt den neuen Tag", strstr(attrappe_glance(), "3 von 3") != NULL);
 }
 

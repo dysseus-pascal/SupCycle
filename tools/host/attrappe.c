@@ -266,6 +266,18 @@ void attrappe_start(AppLaunchReason grund, int32_t cookie) {
   s_start_cookie = cookie;
 }
 bool attrappe_wecker_abonniert(void) { return s_wecker_abonnent != NULL; }
+int attrappe_uhr_aus_bis(time_t bis) {
+  // Wie prv_update_events_callback in service.c: bleibt nur, was danach
+  // liegt; wer melden wollte, kommt in die Liste der verpassten.
+  int gemeldet = 0, k = 0;
+  for (int i = 0; i < s_wecker_zahl; i++) {
+    if (s_wecker[i].zeit - bis > 0) s_wecker[k++] = s_wecker[i];
+    else if (s_wecker[i].melden) gemeldet++;
+  }
+  s_wecker_zahl = k;
+  stub_jetzt = bis;
+  return gemeldet;
+}
 bool attrappe_wecker_feuert(void) {
   if (s_wecker_zahl == 0) return false;
   const AttrappeWecker w = s_wecker[0];

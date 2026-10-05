@@ -10,7 +10,9 @@
 //
 // Pebble erlaubt hoechstens ACHT geplante Wakeups je App. Geplant werden die
 // naechsten sieben Erinnerungen, so weit voraus, bis sieben gefunden oder
-// SC_VORAUS_TAGE abgesucht sind, und dazu ein Wecker zum Neuplanen (unten).
+// SC_VORAUS_TAGE abgesucht sind, und - wenn noetig - ein Wecker zum
+// Neuplanen (unten). Ist in SC_VORAUS_TAGE nichts faellig, wird bis zum
+// ersten faelligen Tag weitergesucht, hoechstens SC_SUCHE_TAGE weit.
 //
 // DIE KETTE MUSS SICH SELBST TRAGEN. Gestellt wird nur, wenn die App laeuft,
 // und meist laeuft sie, weil ein Wecker sie geoeffnet hat. Bis 0.15.0 wurde
@@ -20,13 +22,29 @@
 // W-K1).
 #define SC_VORAUS_TAGE 60
 
-// DER WECKER ZUM NEUPLANEN (Keepalive) klopft um SC_NEUPLANEN_MINUTE, jede
-// Nacht. Die App stellt dann alle Wecker neu und geht sofort wieder zu, ohne
-// Fenster, ohne Vibration, ohne Nachricht ans Telefon. Er faengt ab, was die
-// Vorausplanung allein nicht kann: eine neue Zeitzone, eine Sommerzeitregel,
-// die die Uhr erst spaeter erfaehrt, und eine Pause, die laenger dauert, als
-// voraus gesucht wird. Ein verpasster meldet sich nicht ("verpasst" gilt nur
-// fuer Erinnerungen).
+// EINE LANGE PAUSE HAT TROTZDEM IHRE ERINNERUNG. Ist in SC_VORAUS_TAGE nichts
+// faellig, sucht die Planung weiter bis zum ersten faelligen Tag und stellt
+// dessen Erinnerung - wie jede, die sich meldet, wenn die Uhr sie verpasst.
+// Vorher hing die Kette dann allein am Wecker zum Neuplanen, und der meldet
+// sich nicht: war die Uhr um 03:00 aus, oeffnete nichts mehr die App, und die
+// Erinnerung nach der Pause fiel aus. So weit reicht die laengste Pause der
+// Konfigseite samt Einnahmezeit (je 52 Wochen) und dem laengsten Raster
+// (30 Tage).
+#define SC_SUCHE_TAGE (2 * 52 * 7 + 30)
+
+// DER WECKER ZUM NEUPLANEN (Keepalive) klopft um SC_NEUPLANEN_MINUTE. Die App
+// stellt dann alle Wecker neu und geht sofort wieder zu, ohne Fenster, ohne
+// Vibration, ohne Nachricht ans Telefon. Er faengt ab, was die Vorausplanung
+// allein nicht kann: eine neue Zeitzone, eine Sommerzeitregel, die die Uhr
+// erst spaeter erfaehrt, und eine Pause, die laenger dauert, als voraus
+// gesucht wird. Ein verpasster meldet sich nicht ("verpasst" gilt nur fuer
+// Erinnerungen).
+//
+// ER STEHT NUR, WENN SONST LANGE NICHTS KLOPFT: in einer Pause oder bei
+// einem Raster ueber einen Tag. Ein Wecker startet die App im Vordergrund
+// und verdraengt, was dort gerade laeuft - wer um 03:00 navigiert, landete
+// jede Nacht auf dem Zifferblatt. Kommt bis zum 03:00 nach dem naechsten
+// eine Erinnerung, plant die ohnehin neu.
 #define SC_NEUPLANEN_MINUTE (3 * 60)
 
 // Alle Wecker neu stellen. Bei jedem Start rufen und nach jeder Aenderung am

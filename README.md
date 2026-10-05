@@ -332,7 +332,7 @@ node tools/strings_check.js src/c/strings_table.h
 sh tools/plan_host_test.sh      # Hakenzeiten, Zurücknehmen, Tageswechsel, Persist-Fächer (Rechner-C, pebble.h als Attrappe)
 sh tools/phone_host_test.sh     # Startanfrage, Nachfassen, Nachholen, Frage nach der Zeit, Platz im Postausgang, Warten auf das Telefon
 sh tools/tage_host_test.sh      # Kalendertage, Umstellung von 0.15.0, gespeicherter Plan, Kur, Zyklus-Selbsttest (Zürich, London, New York, UTC)
-sh tools/remind_host_test.sh    # Weckplan: 60 Tage voraus, Wecker zum Neuplanen, Umstellungstage, Aufschub (drei Zonen)
+sh tools/remind_host_test.sh    # Weckplan: 60 Tage voraus, lange Pause, Wecker zum Neuplanen nur wenn nötig, Umstellungstage, Aufschub (drei Zonen)
 sh tools/app_host_test.sh       # die ganze App: Weckstarts, Wecker bei offener App, Genommen und Telefon, Zyklusseite, Aufschub (drei Zonen)
 node tools/pkjs_start_test.js   # Startzweige der Telefonseite, Antwort auf die Frage nach der Zeit
 node tools/pkjs_tage_test.js    # Kalendertage und Anker auf der Telefonseite, Anker durch die Konfigseite
@@ -514,7 +514,8 @@ während die Erinnerung nach dem Abhaken nur noch auf das Telefon wartet,
 erscheint sie danach, statt dass die App zugeht.
 
 Pebble erlaubt höchstens **acht** geplante Wakeups je App. Geplant werden die
-nächsten sieben Erinnerungen, **bis zu 60 Tage voraus**, und bei jedem Start
+nächsten sieben Erinnerungen, **bis zu 60 Tage voraus** (steht darin keine,
+bis zur ersten), und bei jedem Start
 neu — so hält sich der Weckplan selbst aktuell, auch nach einem Neustart, einer
 Zeitumstellung oder einem Zyklus, der über Nacht in die Pause gewechselt ist.
 Bis 0.15.0 waren es zwei Tage: ein Präparat „alle 2 Tage“ oder eine Pause
@@ -522,12 +523,27 @@ liess danach keinen Wecker stehen, und die Erinnerungen hörten still auf.
 Die Uhrzeit gilt auch am Umstellungstag: 08:00 ist 08:00, nicht 07:00 oder
 09:00.
 
-**Der achte ist der Wecker zum Neuplanen**, jede Nacht um 03:00. Die App stellt
-dann alle Wecker neu und geht sofort wieder zu — ohne Fenster, ohne Vibration,
-ohne Nachricht ans Telefon. Er fängt ab, was die Vorausplanung allein nicht
-kann: eine neue Zeitzone, eine Sommerzeitregel, die die Uhr erst später
-erfährt, und eine Pause, die länger dauert als 60 Tage. Verpasst ihn die Uhr
-(aus), meldet er sich nicht.
+**Der achte ist der Wecker zum Neuplanen**, um 03:00 — aber nur, wenn sonst
+lange nichts klopft: in einer Pause oder bei einem Raster über einen Tag. Die
+App stellt dann alle Wecker neu und geht sofort wieder zu — ohne Fenster, ohne
+Vibration, ohne Nachricht ans Telefon. Er fängt ab, was die Vorausplanung
+allein nicht kann: eine neue Zeitzone, eine Sommerzeitregel, die die Uhr erst
+später erfährt, und eine lange Pause. Verpasst ihn die Uhr (aus), meldet er
+sich nicht.
+
+Zuerst stand er jede Nacht. Ein Wecker startet die App aber im Vordergrund und
+verdrängt, was dort läuft: wer um 03:00 navigierte, landete auf dem
+Zifferblatt. Kommt bis zum 03:00 nach dem nächsten ohnehin eine Erinnerung,
+plant die neu — bei täglichen Präparaten also immer. Der Preis: nach einer
+Reise in eine andere Zeitzone klopft die erste Erinnerung noch zur alten
+Ortszeit; erst sie plant neu.
+
+**Eine lange Pause hängt nicht allein an ihm.** Ist in 60 Tagen nichts fällig,
+sucht die Planung bis zum ersten fälligen Tag weiter (höchstens 2 × 52 Wochen
+und 30 Tage) und stellt diese Erinnerung — sie meldet sich, wenn die Uhr sie
+verpasst. Vorher stand in so einer Pause nur der stille Wecker zum Neuplanen:
+war die Uhr um 03:00 aus, öffnete nichts mehr die App, und die Erinnerung nach
+der Pause fiel aus.
 
 ## Die Kapsel
 

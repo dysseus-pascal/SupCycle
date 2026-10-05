@@ -161,6 +161,10 @@ void attrappe_start(AppLaunchReason grund, int32_t cookie);
 // Eintrag weg, Abonnent gerufen. false, wenn keiner steht.
 bool attrappe_wecker_feuert(void);
 bool attrappe_wecker_abonniert(void);
+// Die Uhr ist aus bis `bis` und startet dann neu (pebbleos wakeup_init):
+// abgelaufene Wecker sind weg, die mit melden zaehlen als verpasst.
+// Rueckgabe: wie viele verpasste sich melden.
+int attrappe_uhr_aus_bis(time_t bis);
 
 // --- Was die ganze App zusaetzlich braucht (attrappe_ui.c) ---
 #include "pebble_ui.h"
