@@ -774,6 +774,18 @@ static void abschnitt_nachholen(void) {
   remind_nachholen(&b);
   pruefe("ein Aufschub von gestern wartet: er bleibt, B nicht", remind_aufschub(&g) && g.tag == heute - 1 &&
          strstr(attrappe_log_text, "bleibt auf dem Heute-Schirm") != NULL);
+  // Einer von sc-r (ohne Plaetze) wartet: er wird nicht ueberschrieben.
+  frisch(ortszeit(J, M, T, 8, 1));
+  plan_setzen(zwei, 2);
+  persist_write_int(FACH_AUFSCHUB_ZEIT, (int)ortszeit(J, M, T, 8, 15));
+  persist_write_int(FACH_AUFSCHUB_MINUTE, 480);
+  persist_write_int(FACH_AUFSCHUB_ZAHL, 2);
+  persist_write_int(FACH_AUFSCHUB_TAG, heute);
+  remind_schedule();              // so stand er schon
+  remind_nachholen(&b);
+  pruefe("ein Aufschub ohne Plaetze wartet: er bleibt, mit Zaehler 2, um 08:15",
+         aufschub_wecker(480) && ist_um(aufschub_wecker(480)->zeit, J, M, T, 8, 15) &&
+         remind_snooze_count(480, heute) == 2 && aufschub_wecker(481) == NULL);
 }
 
 int main(void) {

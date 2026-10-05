@@ -125,11 +125,12 @@ void remind_snooze(const Aufschub *a) {
 void remind_nachholen(const Aufschub *a) {
   const time_t wann = time(NULL) + 60;
   const time_t wartet = prv_snooze_at();
-  int32_t tag;
+  int32_t tag = 0;
   uint8_t plaetze, vortag;
-  if (wartet > 0 && prv_snooze_tag(&tag) && prv_snooze_plaetze(&plaetze, &vortag)) {
+  if (wartet > 0) {
     // Ein Aufschub wartet noch: er bleibt, Uhrzeit und Zaehler sind seine.
-    if (tag != a->tag) {
+    // Ohne Tag oder Plaetze (von sc-r gemerkt) laesst er sich nicht ergaenzen.
+    if (!prv_snooze_tag(&tag) || tag != a->tag || !prv_snooze_plaetze(&plaetze, &vortag)) {
       APP_LOG(APP_LOG_LEVEL_WARNING, "Runde %d bleibt auf dem Heute-Schirm - Aufschub vom Tag %d wartet",
               a->minute, (int)tag);
       return;
