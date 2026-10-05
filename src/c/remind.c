@@ -155,6 +155,19 @@ static bool prv_noch_offen(int32_t the_day, int minute, bool heute) {
   return false;
 }
 
+// Kann je wieder etwas faellig werden, ohne dass der Plan sich aendert? Nein
+// bei leerem Plan und wenn jede Kur ohne Pause abgelaufen ist (CyclePhaseDone
+// bleibt Done). Dann nuetzt der Wecker zum Neuplanen nichts: ein neuer Plan
+// kommt nur bei offener App, und der Neuplan-Start fragt das Telefon nicht.
+// Er verdraengte nur jede Nacht, was um 03:00 im Vordergrund laeuft.
+static bool prv_wird_wieder_faellig(void) {
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    const PlanItem *it = plan_item(i);
+    if (it && it->used && plan_cycle(i).phase != CyclePhaseDone) return true;
+  }
+  return false;
+}
+
 void remind_schedule(void) {
   const time_t now = time(NULL);
   wakeup_cancel_all();
@@ -275,6 +288,8 @@ void remind_schedule(void) {
   const time_t danach = kalender_zeit_am(kalender_tag(neu) + 1, SC_NEUPLANEN_MINUTE);
   if (erste > 0 && erste <= danach) {
     APP_LOG(APP_LOG_LEVEL_INFO, "Kein Wecker zum Neuplanen - die naechste Erinnerung plant neu");
+  } else if (!prv_wird_wieder_faellig()) {
+    APP_LOG(APP_LOG_LEVEL_INFO, "Kein Wecker zum Neuplanen - nichts wird wieder faellig");
   } else if (prv_schedule(neu, COOKIE_NEUPLANEN, false)) {
     n++;
   }

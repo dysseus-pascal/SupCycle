@@ -12,6 +12,7 @@
 //   - DER WECKER ZUM NEUPLANEN steht nur, wenn sonst lange nichts klopft
 //     (Pause, Raster ueber einen Tag): er startet die App im Vordergrund und
 //     verdraengt, was um drei dort laeuft. Verpasst meldet er sich nicht.
+//     Bei leerem Plan und nach beendeter Kur steht er gar nicht.
 //   - EINE LANGE PAUSE haengt nicht allein an ihm: die erste Erinnerung
 //     danach steht auch, wenn sie weiter als 60 Tage voraus liegt - bis
 //     dahin riss die Kette, wenn die Uhr um 03:00 aus war.
@@ -222,13 +223,22 @@ static void abschnitt_neuplanen(void) {
   pruefe("  die Erinnerung nach der Pause steht noch", e && ist_um(e->zeit, J, M, T + 363, 8, 0));
 
   // Nichts mehr faellig, auch nicht in SC_SUCHE_TAGE: eine beendete Kur.
+  // Dann nuetzt auch der Wecker zum Neuplanen nichts - ein neuer Plan kommt
+  // nur bei offener App -, er verdraengte nur jede Nacht, was um drei laeuft.
   frisch(ortszeit(J, M, T, 10, 0));
   Platz kur_vorbei[] = { { "Rhodiola", 8, 0, 1, 4, 0, heute - 100 } };
   plan_setzen(kur_vorbei, 1);
   remind_schedule();
-  pruefe("beendete Kur: keine Erinnerung, der Wecker zum Neuplanen steht",
-         erinnerungen() == 0 && neuplanen() != NULL && attrappe_wecker_zahl() == 1);
-  pruefe("  und das steht im Log", strstr(attrappe_log_text, "keine Erinnerung faellig") != NULL);
+  pruefe("beendete Kur: keine Erinnerung und kein Wecker zum Neuplanen", attrappe_wecker_zahl() == 0);
+  pruefe("  und das steht im Log", strstr(attrappe_log_text, "keine Erinnerung faellig") != NULL &&
+                                   strstr(attrappe_log_text, "nichts wird wieder faellig") != NULL);
+  // Neben der beendeten eine alle 2 Tage: die steht weiter an, also auch
+  // der Wecker zum Neuplanen.
+  frisch(ortszeit(J, M, T, 10, 0));
+  Platz gemischt[] = { { "Rhodiola", 8, 0, 1, 4, 0, heute - 100 }, { "Zink", 9, 0, 2, 0, 0, heute } };
+  plan_setzen(gemischt, 2);
+  remind_schedule();
+  pruefe("beendete Kur und alle 2 Tage: der Wecker zum Neuplanen steht", neuplanen() != NULL);
 
   // Vor drei Uhr gestellt: noch heute.
   frisch(ortszeit(J, M, T, 2, 0));
@@ -237,17 +247,22 @@ static void abschnitt_neuplanen(void) {
   n = neuplanen();
   pruefe("um 02:00 gestellt: heute um 03:00", n && ist_um(n->zeit, J, M, T, 3, 0));
 
-  // Ohne Plan steht er auch - die App plant beim naechsten Mal selbst.
+  // Ohne Plan kein Wecker: ein Plan kommt nur bei offener App.
   frisch(ortszeit(J, M, T, 10, 0));
   remind_schedule();
-  pruefe("ohne Plan: nur der Wecker zum Neuplanen", attrappe_wecker_zahl() == 1 && neuplanen() != NULL);
+  pruefe("ohne Plan: gar kein Wecker", attrappe_wecker_zahl() == 0);
 
-  // In der Nacht der Umstellung: 03:00 gibt es, und er liegt dort.
+  // In der Nacht der Umstellung: 03:00 gibt es, und er liegt dort. Mitten
+  // in einer langen Pause, sonst stuende er gar nicht.
   frisch(ortszeit(2026, 3, 29, 1, 0));
+  Platz pause_maerz[] = { { "Maca", 8, 0, 1, 1, 52, datum_tag(2026, 3, 29) - 8 } };
+  plan_setzen(pause_maerz, 1);
   remind_schedule();
   n = neuplanen();
   pruefe("29.03.2026 01:00 gestellt: 03:00 am selben Tag", n && ist_um(n->zeit, 2026, 3, 29, 3, 0));
   frisch(ortszeit(2026, 10, 24, 22, 0));
+  Platz pause_okt[] = { { "Maca", 8, 0, 1, 1, 52, datum_tag(2026, 10, 24) - 8 } };
+  plan_setzen(pause_okt, 1);
   remind_schedule();
   n = neuplanen();
   pruefe("24.10.2026 22:00 gestellt: 25.10. 03:00", n && ist_um(n->zeit, 2026, 10, 25, 3, 0));

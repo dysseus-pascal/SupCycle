@@ -34,17 +34,20 @@
 
 // DER WECKER ZUM NEUPLANEN (Keepalive) klopft um SC_NEUPLANEN_MINUTE. Die App
 // stellt dann alle Wecker neu und geht sofort wieder zu, ohne Fenster, ohne
-// Vibration, ohne Nachricht ans Telefon. Er faengt ab, was die Vorausplanung
-// allein nicht kann: eine neue Zeitzone, eine Sommerzeitregel, die die Uhr
-// erst spaeter erfaehrt, und eine Pause, die laenger dauert, als voraus
-// gesucht wird. Ein verpasster meldet sich nicht ("verpasst" gilt nur fuer
-// Erinnerungen).
+// Vibration, ohne Nachricht ans Telefon. Ein verpasster meldet sich nicht
+// ("verpasst" gilt nur fuer Erinnerungen).
 //
 // ER STEHT NUR, WENN SONST LANGE NICHTS KLOPFT: in einer Pause oder bei
 // einem Raster ueber einen Tag. Ein Wecker startet die App im Vordergrund
 // und verdraengt, was dort gerade laeuft - wer um 03:00 navigiert, landete
 // jede Nacht auf dem Zifferblatt. Kommt bis zum 03:00 nach dem naechsten
-// eine Erinnerung, plant die ohnehin neu.
+// eine Erinnerung, plant die ohnehin neu. Nur dort faengt er eine neue
+// Zeitzone oder Sommerzeitregel ab; bei taeglichen Praeparaten klopft nach
+// einem Flug die erste Erinnerung noch zur alten Zeit, erst sie plant neu.
+//
+// UND NUR, WENN WIEDER ETWAS FAELLIG WERDEN KANN: bei leerem Plan und nach
+// jeder abgelaufenen Kur ohne Pause steht er nicht. Ein neuer Plan kommt nur
+// bei offener App - der Wecker braechte ihn nie.
 #define SC_NEUPLANEN_MINUTE (3 * 60)
 
 // Alle Wecker neu stellen. Bei jedem Start rufen und nach jeder Aenderung am

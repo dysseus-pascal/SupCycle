@@ -536,7 +536,9 @@ verdrängt, was dort läuft: wer um 03:00 navigierte, landete auf dem
 Zifferblatt. Kommt bis zum 03:00 nach dem nächsten ohnehin eine Erinnerung,
 plant die neu — bei täglichen Präparaten also immer. Der Preis: nach einer
 Reise in eine andere Zeitzone klopft die erste Erinnerung noch zur alten
-Ortszeit; erst sie plant neu.
+Ortszeit; erst sie plant neu. Bei leerem Plan und wenn jede Kur ohne Pause
+abgelaufen ist, steht er gar nicht: dann wird nichts mehr fällig, und einen
+neuen Plan bringt nur die offene App, nie dieser Wecker.
 
 **Eine lange Pause hängt nicht allein an ihm.** Ist in 60 Tagen nichts fällig,
 sucht die Planung bis zum ersten fälligen Tag weiter (höchstens 2 × 52 Wochen
