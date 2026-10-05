@@ -14,4 +14,9 @@
 // erfahren, denn wenn ein Wecker die App geoeffnet hat, hat sie dann nichts
 // mehr zu suchen - sonst bleibt der Heute-Schirm stehen, auf dem Abgehaktes
 // durchgestrichen mitsteht, und das liest sich wie "schon wieder faellig".
+//
+// STEHT SCHON EIN ERINNERUNGSFENSTER, kommt die Runde dort dazu: es vibriert
+// neu und zeigt beide. Ist das Fenster schon abgehakt und wartet nur noch auf
+// das Telefon, zeigt es die neue Runde danach, statt zuzugehen. Rueckgabe
+// dann true.
 bool reminder_window_push(int minute);

@@ -23,6 +23,11 @@
 // EINE ERINNERUNG GILT EINER RUNDE. Auch nach einem Aufschub zeigt sie nur
 // die Präparate ihrer Uhrzeit - die Mittagsrunde soll nicht den Morgen
 // nachtragen, den man bewusst hat liegen lassen.
+//
+// AUSSER DAS FENSTER STEHT NOCH. Klopft die naechste Runde, waehrend die
+// vorige unbeantwortet offen ist, kommt sie dazu: es vibriert neu, und beide
+// stehen da. Liegen gelassen hat man die vorige dann nicht bewusst - man hat
+// sie nur nicht gesehen.
 
 #define VIBE_PULSES 3
 #define VIBE_GAP_MS 20000
@@ -37,30 +42,84 @@ static GBitmap *s_icon_take;
 static GBitmap *s_icon_later;
 static AppTimer *s_vibe;
 static int s_vibes_left;
-static int s_minute;          // Uhrzeit der Erinnerung, -1 = "was offen ist"
-// Der Kalendertag der Runde (remind_runden_tag): heute, oder gestern fuer
-// einen Aufschub, der ueber Mitternacht ging. Beim Erscheinen festgelegt -
-// eine Erinnerung von 23:50, die bis nach Mitternacht offen steht, bleibt
-// die Runde von gestern.
-static int32_t s_tag;
+
+// Eine Runde: ihre Uhrzeit (Minuten seit Mitternacht, -1 = "was offen ist")
+// und ihr Kalendertag (remind_runden_tag): heute, oder gestern fuer einen
+// Aufschub, der ueber Mitternacht ging. Beim Erscheinen festgelegt - eine
+// Erinnerung von 23:50, die bis nach Mitternacht offen steht, bleibt die
+// Runde von gestern.
+typedef struct {
+  int minute;
+  int32_t tag;
+} Runde;
+
+// Jede Uhrzeit des Plans, von heute und von gestern.
+#define RUNDEN_MAX (2 * SC_MAX_ITEMS)
+
+// DIE RUNDEN DIESES FENSTERS, die neueste zuletzt; meist ist es eine. Bis
+// 0.15.0 kehrte reminder_window_push bei offenem Fenster sofort zurueck: die
+// naechste Runde vibrierte nicht, war nicht zu sehen, und ihr Wecker war
+// verbraucht. Ein einziges liegen gelassenes Fenster schaltete so alle
+// spaeteren Runden des Tages stumm. Die neueste gibt die Uhrzeit oben vor,
+// und ihr gilt "spaeter".
+static Runde s_runden[RUNDEN_MAX];
+static int s_runden_zahl;
+// Runden, die klopften, waehrend das Fenster nach dem Abhaken nur noch auf
+// das Telefon wartet: sie sind danach dran, statt mit der App zu verschwinden.
+static Runde s_danach[RUNDEN_MAX];
+static int s_danach_zahl;
 static bool s_playing;
 static bool s_geht;           // abgehakt: wartet nur noch auf das Telefon
 
-// Ist die Runde von heute? Nur dann gibt es Haken zu ihr (plan.h).
-static bool prv_heute(void) {
-  return s_tag == plan_today();
+static const Runde *prv_neueste(void) {
+  return &s_runden[s_runden_zahl - 1];
 }
 
-// Gehört dieses Präparat zu dieser Erinnerung? Bei -1 (ohne Uhrzeit) zählt
-// alles, was heute noch offen ist. Fuer die Runde von gestern zaehlt, was
+// Die Runde in die Liste. Steht sie schon darin, rueckt sie ans Ende - sie
+// ist jetzt die neueste. Ist die Liste voll, faellt die aelteste heraus.
+static void prv_merken(Runde *liste, int *zahl, int minute, int32_t tag) {
+  for (int k = 0; k < *zahl; k++) {
+    if (liste[k].minute != minute || liste[k].tag != tag) continue;
+    memmove(&liste[k], &liste[k + 1], (size_t)(*zahl - k - 1) * sizeof(Runde));
+    (*zahl)--;
+    break;
+  }
+  if (*zahl >= RUNDEN_MAX) {
+    APP_LOG(APP_LOG_LEVEL_WARNING, "Runde %d faellt aus dem Fenster", liste[0].minute);
+    memmove(&liste[0], &liste[1], (size_t)(*zahl - 1) * sizeof(Runde));
+    (*zahl)--;
+  }
+  liste[*zahl] = (Runde){ .minute = minute, .tag = tag };
+  (*zahl)++;
+}
+
+// Gehört dieses Präparat zu dieser Runde? Bei -1 (ohne Uhrzeit) zählt alles,
+// was an ihrem Tag noch offen ist. Fuer die Runde von gestern zaehlt, was
 // gestern anstand - ihre Haken sind um Mitternacht weggefallen, und offen
-// ist sie, sonst klopfte ihr Aufschub nicht (remind_schedule).
-static bool prv_in_batch(int i) {
-  if (!plan_due_on(i, s_tag)) return false;
-  if (prv_heute() && plan_taken(i)) return false;
-  if (s_minute < 0) return true;
+// ist sie, sonst klopfte ihr Aufschub nicht (remind_schedule). Haken gibt es
+// nur fuer heute (plan.h).
+static bool prv_in_runde(int i, const Runde *r) {
+  if (!plan_due_on(i, r->tag)) return false;
+  if (r->tag == plan_today() && plan_taken(i)) return false;
+  if (r->minute < 0) return true;
   const PlanItem *it = plan_item(i);
-  return it && (it->hour * 60 + it->minute) == s_minute;
+  return it && (it->hour * 60 + it->minute) == r->minute;
+}
+
+static int prv_zahl_in(const Runde *r) {
+  int n = 0;
+  for (int i = 0; i < SC_MAX_ITEMS; i++) {
+    if (prv_in_runde(i, r)) n++;
+  }
+  return n;
+}
+
+// Gehört es zu einer der Runden dieses Fensters?
+static bool prv_in_batch(int i) {
+  for (int k = 0; k < s_runden_zahl; k++) {
+    if (prv_in_runde(i, &s_runden[k])) return true;
+  }
+  return false;
 }
 
 static int prv_batch_count(void) {
@@ -104,11 +163,12 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
   const int16_t head_y = PBL_IF_ROUND_ELSE(46, 26);
   pill_fx_draw_still(ctx, GPoint(margin + pill_w / 2, head_y), pill_w);
 
-  // 12 statt 8 Byte: s_minute liegt zwar immer in 0..1439 ("HH:MM" + NUL),
+  // 12 statt 8 Byte: die Minute liegt zwar immer in 0..1439 ("HH:MM" + NUL),
   // aber gcc kennt den Bereich nicht und warnte bei jedem Bau vor Abschneiden.
   char hhmm[12];
-  if (s_minute >= 0) {
-    snprintf(hhmm, sizeof(hhmm), "%02d:%02d", s_minute / 60, s_minute % 60);
+  const int minute = prv_neueste()->minute;
+  if (minute >= 0) {
+    snprintf(hhmm, sizeof(hhmm), "%02d:%02d", minute / 60, minute % 60);
   } else {
     clock_copy_time_string(hhmm, sizeof(hhmm));
   }
@@ -140,7 +200,7 @@ static void prv_canvas_update(Layer *layer, GContext *ctx) {
 
   // Der wievielte Aufschub - und ob es der letzte war. Wer es sieht, weiss,
   // dass "spaeter" beim naechsten Mal "heute nicht" heisst.
-  const int count = remind_snooze_count(s_minute);
+  const int count = remind_snooze_count(minute);
   if (count > 0) {
     char note[24];
     if (count >= SC_SNOOZE_MAX) snprintf(note, sizeof(note), "%s", S(STR_SNOOZE_LAST));
@@ -157,12 +217,55 @@ static void prv_close(void) {
   window_stack_pop_all(false);
 }
 
+// Das Zeichen fuer "spaeter" nach dem Zaehler der neuesten Runde, dann
+// vibrieren - beim Erscheinen und wenn eine Runde dazukommt.
+static void prv_klopfen(void) {
+  // Kein Aufschub mehr uebrig: dann steht dort auch kein Zeichen dafuer. Ein
+  // Zeichen fuer eine Taste, die etwas anderes tut, waere eine Luege.
+  if (s_icon_later && remind_snooze_left(prv_neueste()->minute)) {
+    action_bar_layer_set_icon(s_bar, BUTTON_ID_DOWN, s_icon_later);
+  } else {
+    action_bar_layer_clear_icon(s_bar, BUTTON_ID_DOWN);
+  }
+  // IN DER RUHEZEIT BLEIBT DIE UHR STILL. Der Schirm kommt trotzdem - wer
+  // hinsieht, sieht die Erinnerung; wer schlaeft, wird nicht geweckt.
+  // quiet_time_is_active kennt Kalender und Schalter, wie in Drinktervall.
+  prv_stop_vibes();
+  s_vibes_left = quiet_time_is_active() ? 0 : VIBE_PULSES;
+  prv_vibe_cb(NULL);
+}
+
+// Das Telefon hat den Haken, oder die Frist ist um. Klopfte waehrenddessen
+// eine weitere Runde, ist sie jetzt dran - im selben Fenster, neu
+// aufgezogen. Sonst geht die App zu.
+static void prv_nach_telefon(void) {
+  // Nur einmal je Abhaken: ein zweiter Ruf (pill_fx_play ruft sein Ende
+  // auch, wenn es nicht zustande kommt) schloesse die neue Runde gleich wieder.
+  if (!s_geht) return;
+  if (s_danach_zahl > 0) {
+    memcpy(s_runden, s_danach, (size_t)s_danach_zahl * sizeof(Runde));
+    s_runden_zahl = s_danach_zahl;
+    s_danach_zahl = 0;
+    if (prv_batch_count() > 0) {
+      APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d nach dem Warten", prv_neueste()->minute);
+      // Die Animation hat die Leiste weggenommen (prv_take).
+      if (s_playing) action_bar_layer_add_to_window(s_bar, s_window);
+      s_playing = false;
+      s_geht = false;
+      prv_klopfen();
+      layer_mark_dirty(s_canvas);
+      return;
+    }
+  }
+  prv_close();
+}
+
 // ERST GEHEN, WENN DAS TELEFON DEN HAKEN HAT. Bis 0.15.0 schloss die App
 // gleich nach dem Abschicken (ohne Animation) oder nach 1,4 s (mit), und die
 // Uhr verwarf, was noch im Postausgang lag (Audit M3). Jetzt hoechstens
 // WARTE_TELEFON_MS laenger; ohne Verbindung geht es sofort.
 static void prv_close_nach_telefon(void) {
-  phone_when_sent(prv_close, WARTE_TELEFON_MS);
+  phone_when_sent(prv_nach_telefon, WARTE_TELEFON_MS);
 }
 
 static void prv_fx_done(void) {
@@ -173,20 +276,24 @@ static void prv_fx_done(void) {
 static void prv_take(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
   prv_stop_vibes();
-  const bool heute = prv_heute();
-  if (heute) {
-    for (int i = 0; i < SC_MAX_ITEMS; i++) {
-      if (prv_in_batch(i)) plan_set_taken(i, true);
+  bool heute = false;
+  for (int k = 0; k < s_runden_zahl; k++) {
+    const Runde *r = &s_runden[k];
+    if (r->tag == plan_today()) {
+      for (int i = 0; i < SC_MAX_ITEMS; i++) {
+        if (prv_in_runde(i, r)) plan_set_taken(i, true);
+      }
+      heute = true;
+    } else {
+      // DIE RUNDE VON GESTERN, nach Mitternacht genommen. Ein Haken hiesse
+      // hier "heute genommen" - und die Runde gleicher Uhrzeit von heute
+      // klopfte am Abend nicht mehr. Lieber fehlt der Vermerk fuer gestern.
+      APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d von gestern genommen - kein Haken fuer heute", r->minute);
     }
-  } else {
-    // DIE RUNDE VON GESTERN, nach Mitternacht genommen. Ein Haken hiesse
-    // hier "heute genommen" - und die Runde gleicher Uhrzeit von heute
-    // klopfte am Abend nicht mehr. Lieber fehlt der Vermerk fuer gestern.
-    APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d von gestern genommen - kein Haken fuer heute", s_minute);
+    // Die eben abgehakten sollen heute nicht nochmal klopfen - auch nicht
+    // ueber einen offenen Aufschub dieser Runde.
+    remind_snooze_clear(r->minute);
   }
-  // Wecker neu stellen: die eben abgehakten sollen heute nicht nochmal
-  // klopfen - auch nicht ueber einen offenen Aufschub dieser Runde.
-  remind_snooze_clear(s_minute);
   remind_schedule();
   if (heute) phone_send_today();     // Pins als erledigt markieren
   s_geht = true;
@@ -214,20 +321,24 @@ static void prv_take(ClickRecognizerRef recognizer, void *context) {
 static void prv_dismiss(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
   prv_stop_vibes();
-  remind_snooze_clear(s_minute);
+  for (int k = 0; k < s_runden_zahl; k++) remind_snooze_clear(s_runden[k].minute);
   remind_schedule();
   prv_close();
 }
 
+// ES GIBT EINEN AUFSCHUB, NICHT MEHRERE (remind.h): er gilt der neuesten
+// Runde. Aeltere im selben Fenster hatten ihre Erinnerung schon; sie bleiben
+// auf dem Heute-Schirm offen, wie nach dem Wegdruecken.
 static void prv_later(ClickRecognizerRef recognizer, void *context) {
   if (s_playing || s_geht) return;
-  if (!remind_snooze_left(s_minute)) {
+  const Runde neueste = *prv_neueste();
+  if (!remind_snooze_left(neueste.minute)) {
     // Dreimal "spaeter" heisst "heute nicht": die Runde verfaellt.
     prv_dismiss(recognizer, context);
     return;
   }
   prv_stop_vibes();
-  remind_snooze(s_minute, s_tag);
+  remind_snooze(neueste.minute, neueste.tag);
   prv_close();
 }
 
@@ -251,18 +362,8 @@ static void prv_load(Window *window) {
   s_icon_take = gbitmap_create_with_resource(RESOURCE_ID_ICON_CHECK);
   s_icon_later = gbitmap_create_with_resource(RESOURCE_ID_ICON_SNOOZE);
   if (s_icon_take) action_bar_layer_set_icon(s_bar, BUTTON_ID_SELECT, s_icon_take);
-  // Kein Aufschub mehr uebrig: dann steht dort auch kein Zeichen dafuer. Ein
-  // Zeichen fuer eine Taste, die etwas anderes tut, waere eine Luege.
-  if (s_icon_later && remind_snooze_left(s_minute)) {
-    action_bar_layer_set_icon(s_bar, BUTTON_ID_DOWN, s_icon_later);
-  }
   action_bar_layer_add_to_window(s_bar, window);
-
-  // IN DER RUHEZEIT BLEIBT DIE UHR STILL. Der Schirm kommt trotzdem - wer
-  // hinsieht, sieht die Erinnerung; wer schlaeft, wird nicht geweckt.
-  // quiet_time_is_active kennt Kalender und Schalter, wie in Drinktervall.
-  s_vibes_left = quiet_time_is_active() ? 0 : VIBE_PULSES;
-  prv_vibe_cb(NULL);
+  prv_klopfen();
 }
 
 // Wie im Hauptfenster: der Overlay entsteht beim ERSCHEINEN. Beim Laden
@@ -283,12 +384,33 @@ static void prv_unload(Window *window) {
   s_window = NULL;
   s_canvas = NULL;
   s_bar = NULL;
+  s_geht = false;
+  s_danach_zahl = 0;
 }
 
 bool reminder_window_push(int minute) {
-  if (s_window) return true;
-  s_minute = minute;
-  s_tag = remind_runden_tag(minute);
+  const int32_t tag = remind_runden_tag(minute);
+  if (s_window) {
+    // Das Fenster steht noch. Die neue Runde kommt dazu, wenn es zu ihr
+    // etwas zu nehmen gibt.
+    const Runde neu = { .minute = minute, .tag = tag };
+    if (prv_zahl_in(&neu) == 0) return true;
+    if (s_geht) {
+      // Schon abgehakt, der Schirm gehoert der Animation und dem Warten auf
+      // das Telefon - danach ist sie dran (prv_nach_telefon).
+      prv_merken(s_danach, &s_danach_zahl, minute, tag);
+      APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d kommt nach dem Warten", minute);
+      return true;
+    }
+    prv_merken(s_runden, &s_runden_zahl, minute, tag);
+    APP_LOG(APP_LOG_LEVEL_INFO, "Runde %d kommt zum offenen Fenster dazu", minute);
+    prv_klopfen();
+    layer_mark_dirty(s_canvas);
+    return true;
+  }
+  s_runden_zahl = 0;
+  s_danach_zahl = 0;
+  prv_merken(s_runden, &s_runden_zahl, minute, tag);
   if (prv_batch_count() == 0) return false;  // nichts offen: gar nicht erst zeigen
 
   s_playing = false;

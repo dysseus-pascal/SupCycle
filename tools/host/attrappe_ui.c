@@ -169,6 +169,7 @@ void action_bar_layer_destroy(ActionBarLayer *bar) {
 void action_bar_layer_set_background_color(ActionBarLayer *bar, GColor color) { (void)bar; (void)color; }
 void action_bar_layer_set_click_config_provider(ActionBarLayer *bar, ClickConfigProvider provider) { bar->tasten = provider; }
 void action_bar_layer_set_icon(ActionBarLayer *bar, ButtonId button_id, const GBitmap *icon) { (void)bar; (void)button_id; (void)icon; }
+void action_bar_layer_clear_icon(ActionBarLayer *bar, ButtonId button_id) { (void)bar; (void)button_id; }
 void action_bar_layer_add_to_window(ActionBarLayer *bar, Window *window) { bar->fenster = window; window->leiste = bar; }
 void action_bar_layer_remove_from_window(ActionBarLayer *bar) {
   if (bar->fenster) bar->fenster->leiste = NULL;

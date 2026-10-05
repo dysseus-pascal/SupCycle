@@ -9,7 +9,11 @@
 //   - DER WECKER ZUM NEUPLANEN (W-K1) darf nachts nichts zeigen und nichts
 //     senden: Wecker stellen, App zu.
 //   - EIN WECKER BEI OFFENER APP (W-H2) erinnert genauso wie einer, der die
-//     App startet - bis 0.15.0 verpuffte er.
+//     App startet - bis 0.15.0 verpuffte er. Auch bei offener ERINNERUNG:
+//     die naechste Runde vibriert und steht dazu, statt dass ein liegen
+//     gelassenes Fenster den Rest des Tages stumm schaltet. Und wenn das
+//     Fenster nach dem Abhaken nur noch auf das Telefon wartet, kommt sie
+//     danach.
 //   - NACH "GENOMMEN" (M3) geht die App erst zu, wenn das Telefon den Haken
 //     hat, hoechstens 5 s spaeter - ohne Verbindung sofort.
 //   - HOECHSTENS DREI AUFSCHUEBE, ueber jeden Start durch den Aufschub
@@ -92,6 +96,7 @@ static void uhr(int32_t heute, bool fx) {
 }
 
 static int s_lief;
+static void platz_setzen(int platz, const char *name, int h, int mi, int alle, int32_t anker);
 
 // --- Der Wecker zum Neuplanen ---
 static void lief_mit_fenster(void) { s_lief++; }
@@ -124,10 +129,19 @@ static void bei_offener_app(void) {
          strstr(attrappe_texte(), "08:00") && strstr(attrappe_texte(), "Zink") && strstr(attrappe_texte(), "D3"));
   pruefe("die Kette ist weiter gestellt: morgen 08:00", wecker_um(480, 2026, 7, 15, 8, 0));
   pruefe("und 12:30 heute bleibt", wecker_um(750, 2026, 7, 14, 12, 30));
-  // Die naechste Runde, waehrend die erste noch offen steht: sie verpufft
-  // nicht, die Kette geht weiter.
+  // Die naechste Runde, waehrend die erste noch unbeantwortet offen steht -
+  // das Fenster geht nicht von selbst zu.
+  const int vor_maca = attrappe_vibrationen();
   attrappe_wecker_feuert();          // der von 12:30
-  pruefe("auch die naechste Runde stellt die Kette weiter: morgen 12:30", wecker_um(750, 2026, 7, 15, 12, 30));
+  pruefe("die naechste Runde bei offener Erinnerung vibriert", attrappe_vibrationen() > vor_maca);
+  pruefe("  im selben Fenster, kein zweites", attrappe_fenster_zahl() == 2);
+  attrappe_zeichnen();
+  pruefe("  sie ist sichtbar: 12:30 mit Maca, Zink und D3 bleiben",
+         strstr(attrappe_texte(), "12:30") && strstr(attrappe_texte(), "Maca") &&
+         strstr(attrappe_texte(), "Zink") && strstr(attrappe_texte(), "D3"));
+  pruefe("  und stellt die Kette weiter: morgen 12:30", wecker_um(750, 2026, 7, 15, 12, 30));
+  attrappe_taste(BUTTON_ID_SELECT);
+  pruefe("\"genommen\" hakt beide Runden ab", plan_taken(0) && plan_taken(1) && plan_taken(2));
 }
 static void abschnitt_offen(void) {
   printf("\nWecker bei offener App (W-H2)\n");
@@ -139,6 +153,49 @@ static void abschnitt_offen(void) {
   supcycle_main();
   pruefe("die App lief", s_lief == 1);
 }
+
+// --- Eine Runde, waehrend die Erinnerung auf das Telefon wartet ---
+// Zink und D3 08:00, Maca 08:01. Um 08:00:57 genommen: der Wecker von
+// Maca klopft, waehrend die Meldung ans Telefon noch unterwegs ist.
+static bool s_warten_fx;
+static void warten_und_klopfen(void) {
+  s_lief++;
+  attrappe_zeitgeber_vorspulen(1500);
+  attrappe_ack();                    // die Startanfrage ist durch
+  attrappe_taste(BUTTON_ID_SELECT);
+  pruefe("08:00 genommen, die Meldung ist unterwegs", plan_taken(0) && plan_taken(1) && attrappe_unterwegs());
+  const int vorher = attrappe_vibrationen();
+  attrappe_wecker_feuert();          // Maca, 08:01
+  pruefe("Maca klopft beim Warten: die App bleibt offen", attrappe_fenster_zahl() == 2);
+  if (s_warten_fx) attrappe_animationen_beenden();
+  attrappe_ack();                    // das Telefon hat den Haken
+  pruefe("nach dem Warten geht die App nicht zu", attrappe_fenster_zahl() == 2);
+  pruefe("  Maca vibriert", attrappe_vibrationen() > vorher);
+  attrappe_zeichnen();
+  pruefe("  und ist zu sehen: 08:01 mit Maca, ohne die abgehakten",
+         strstr(attrappe_texte(), "08:01") && strstr(attrappe_texte(), "Maca") &&
+         !strstr(attrappe_texte(), "Zink") && !strstr(attrappe_texte(), "D3"));
+  attrappe_taste(BUTTON_ID_SELECT);
+  pruefe("  die Tasten gehen wieder: Maca genommen", plan_taken(2));
+  if (s_warten_fx) attrappe_animationen_beenden();
+  attrappe_zeitgeber_vorspulen(6000);
+  pruefe("  danach geht die App zu", attrappe_fenster_zahl() == 0);
+}
+static void abschnitt_warten(bool fx, const char *titel) {
+  printf("\n%s\n", titel);
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, fx);
+  platz_setzen(2, "Maca", 8, 1, 1, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0) + 57;
+  attrappe_start(APP_LAUNCH_WAKEUP, 480);
+  s_lief = 0;
+  s_warten_fx = fx;
+  attrappe_app_laeuft = warten_und_klopfen;
+  supcycle_main();
+  pruefe("die App lief", s_lief == 1);
+}
+static void abschnitt_warten_ohne_fx(void) { abschnitt_warten(false, "Eine Runde klopft beim Warten auf das Telefon (W-H2)"); }
+static void abschnitt_warten_mit_fx(void) { abschnitt_warten(true, "Eine Runde klopft beim Warten auf das Telefon, mit Animation (W-H2)"); }
 
 // --- Nach "Genommen" ---
 typedef enum { ACK, KEINE_ANTWORT, OHNE_VERBINDUNG } Antwort;
@@ -450,7 +507,8 @@ static void abschnitt_andere_runde_weg(void) {
 // Jeder Abschnitt laeuft in einem eigenen Prozess: frische statische
 // Variablen wie bei jedem Start auf der Uhr.
 static void (*const ABSCHNITTE[])(void) = {
-  abschnitt_neuplanen, abschnitt_offen, abschnitt_genommen_ohne_fx, abschnitt_genommen_mit_fx,
+  abschnitt_neuplanen, abschnitt_offen, abschnitt_warten_ohne_fx, abschnitt_warten_mit_fx,
+  abschnitt_genommen_ohne_fx, abschnitt_genommen_mit_fx,
   abschnitt_genommen_frist, abschnitt_genommen_offline, abschnitt_kur,
   abschnitt_aufschub_start, abschnitt_aufschub_offen, abschnitt_kurz_davor, abschnitt_mitternacht,
   abschnitt_mitternacht_zweitage,  abschnitt_andere_runde_genommen, abschnitt_andere_runde_weg,

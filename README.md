@@ -503,6 +503,16 @@ noch im Postausgang lag.
 die Uhr sie nicht neu, sondern meldet den Wecker nur — bis 0.15.0 hörte niemand
 zu, und die Erinnerung verpuffte samt dem nächsten Weckplan.
 
+**Auch bei offener Erinnerung.** Steht die Erinnerung von 08:00 noch
+unbeantwortet da (sie geht nicht von selbst zu), und um 12:30 klopft die
+nächste Runde, kommt sie dazu: es vibriert neu, und beide stehen da, oben die
+neue Uhrzeit. „Genommen“ hakt alle ab. „Später“ gilt der neuen Runde — es gibt
+nur einen Aufschub —, die ältere bleibt auf dem Heute-Schirm offen. Bis 0.15.0
+schluckte ein liegen gelassenes Fenster jede weitere Runde des Tages: keine
+Vibration, nichts zu sehen, und ihr Wecker war verbraucht. Klopft eine Runde,
+während die Erinnerung nach dem Abhaken nur noch auf das Telefon wartet,
+erscheint sie danach, statt dass die App zugeht.
+
 Pebble erlaubt höchstens **acht** geplante Wakeups je App. Geplant werden die
 nächsten sieben Erinnerungen, **bis zu 60 Tage voraus**, und bei jedem Start
 neu — so hält sich der Weckplan selbst aktuell, auch nach einem Neustart, einer

@@ -115,6 +115,7 @@ void action_bar_layer_destroy(ActionBarLayer *bar);
 void action_bar_layer_set_background_color(ActionBarLayer *bar, GColor color);
 void action_bar_layer_set_click_config_provider(ActionBarLayer *bar, ClickConfigProvider provider);
 void action_bar_layer_set_icon(ActionBarLayer *bar, ButtonId button_id, const GBitmap *icon);
+void action_bar_layer_clear_icon(ActionBarLayer *bar, ButtonId button_id);
 void action_bar_layer_add_to_window(ActionBarLayer *bar, Window *window);
 void action_bar_layer_remove_from_window(ActionBarLayer *bar);
 
