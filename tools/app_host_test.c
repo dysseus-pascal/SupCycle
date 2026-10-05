@@ -429,10 +429,40 @@ static void abschnitt_kurz_davor(void) {
   starten(APP_LAUNCH_WAKEUP, 480, spaeter_druecken);
   stub_jetzt = ortszeit(2026, 7, 14, 8, 14) + 45;
   starten(APP_LAUNCH_USER, 0, kurz_davor_offen);
-  pruefe("der naechste Wecker ist der Aufschub, nicht vor 08:15 und nicht nach 08:15:16",
-         stub_jetzt >= ortszeit(2026, 7, 14, 8, 15) && stub_jetzt <= ortszeit(2026, 7, 14, 8, 15) + 16);
+  pruefe("der naechste Wecker ist der Aufschub, zu seiner Zeit 08:15, hoechstens 3 s spaeter",
+         stub_jetzt >= ortszeit(2026, 7, 14, 8, 15) && stub_jetzt <= ortszeit(2026, 7, 14, 8, 15) + 3);
   pruefe("er zeigt die Runde 08:00, Aufschub 1 von 3",
          strstr(s_gesehen, "08:00") && strstr(s_gesehen, "Zink") && vermerk("Aufschub 1 von 3"));
+}
+
+// Von Hand um 08:14:45 geoeffnet; auf dem Heute-Schirm um 08:14:59 Maca
+// abgehakt und um 08:15:01 wieder zurueckgenommen - beides stellt alle Wecker
+// neu, bevor der Aufschub von 08:15 geklopft hat.
+static void haken_um_den_aufschub(void) {
+  s_lief++;
+  attrappe_taste(BUTTON_ID_DOWN);
+  attrappe_taste(BUTTON_ID_DOWN);    // Platz 2: Maca
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 14) + 59;
+  attrappe_taste(BUTTON_ID_SELECT);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 15) + 1;
+  attrappe_taste(BUTTON_ID_SELECT);
+  const time_t vorher = stub_jetzt;
+  attrappe_wecker_feuert();
+  pruefe("Maca abgehakt und zurueckgenommen", !plan_taken(2));
+  pruefe("der naechste Wecker kommt gleich (hoechstens 3 s)", stub_jetzt > vorher && stub_jetzt <= vorher + 3);
+  attrappe_zeichnen();
+  snprintf(s_gesehen, sizeof(s_gesehen), "%s", attrappe_texte());
+}
+static void abschnitt_haken_dazwischen(void) {
+  printf("\nDer Aufschub haelt: Haken um seine Zeit, bevor er klopfte\n");
+  uhr(datum_tag(2026, 7, 14), false);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 0);
+  starten(APP_LAUNCH_WAKEUP, 480, spaeter_druecken);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 14) + 45;
+  starten(APP_LAUNCH_USER, 0, haken_um_den_aufschub);
+  pruefe("es ist der Aufschub: 08:00, Zink und D3, Aufschub 1 von 3",
+         s_lief == 1 && strstr(s_gesehen, "08:00") && strstr(s_gesehen, "Zink") && strstr(s_gesehen, "D3") &&
+         vermerk("Aufschub 1 von 3"));
 }
 
 static void abschnitt_mitternacht(void) {
@@ -508,6 +538,18 @@ static void abschnitt_andere_runde_genommen(void) {
 static void abschnitt_andere_runde_weg(void) {
   printf("\nDer Aufschub haelt: eine andere Runde dazwischen weggedrueckt\n");
   andere_runde(zurueck_druecken, "weggedrueckt");
+}
+// Eine Runde hat geklopft (remind_geklopft) und wird weggedrueckt: offen und
+// keine Minute vorbei - trotzdem kommt sie heute nicht nochmal.
+static void abschnitt_weg_bleibt_weg(void) {
+  printf("\nWeggedrueckt klopft eine Runde heute nicht nochmal\n");
+  const int32_t heute = datum_tag(2026, 7, 14);
+  uhr(heute, false);
+  platz_setzen(2, "Maca", 8, 10, 1, heute);
+  stub_jetzt = ortszeit(2026, 7, 14, 8, 10) + 5;
+  starten(APP_LAUNCH_WAKEUP, 490, zurueck_druecken);
+  pruefe("08:10:05 weggedrueckt: heute kein Wecker mehr fuer 08:10, morgen schon",
+         s_lief == 1 && !plan_taken(2) && !wecker_um(490, 2026, 7, 14, 8, 10) && wecker_um(490, 2026, 7, 15, 8, 10));
 }
 
 // --- Westreise mit liegen gebliebenem Aufschub ---
@@ -661,7 +703,7 @@ static void (*const ABSCHNITTE[])(void) = {
   abschnitt_aufschub_start, abschnitt_aufschub_offen, abschnitt_kurz_davor, abschnitt_mitternacht,
   abschnitt_mitternacht_zweitage,  abschnitt_andere_runde_genommen, abschnitt_andere_runde_weg,
   abschnitt_westreise, abschnitt_mitternacht_teilweise, abschnitt_mitternacht_fenster,
-  abschnitt_spaeter_alle, abschnitt_spaeter_vortag,
+  abschnitt_spaeter_alle, abschnitt_spaeter_vortag, abschnitt_haken_dazwischen, abschnitt_weg_bleibt_weg,
 };
 
 int main(void) {

@@ -24,7 +24,7 @@
 //   - Ein Haken OHNE BRAUCHBARE ZEIT (vor 0.14.0 gesetzt, oder als die Uhr
 //     noch im Jahr 2000 stand) faellt wie jeder andere mit einem neuen Tag.
 //   - DIE PERSIST-FAECHER: plan.c, prefs.c und remind.c teilen einen
-//     Zahlenraum. Belegt sind nur 1 bis 11, und keines von zweien - das
+//     Zahlenraum. Belegt sind nur 1 bis 12, und keines von zweien - das
 //     doppelt belegte Fach 4 war der Fehler von 0.14.0.
 //
 // Exitcode 0 = alles wie zugesagt.
@@ -372,7 +372,7 @@ int main(void) {
   pruefe("Uhr im Jahr 2000: auch passende Telefonzeit gibt keinen Tag",
          !plan_uhr_bestaetigt(946728000) && persist_read_int(FACH_TAG) == TAG_0310);
 
-  printf("\nPersist-Faecher: nur 1 bis 11, keines doppelt\n");
+  printf("\nPersist-Faecher: nur 1 bis 12, keines doppelt\n");
   {
     // Ein Lauf durch alles, was schreibt. Vorher stand 0.15.0 auf der Uhr:
     // ein Plan und der gemerkte Tag, aber kein Fach 9 - der Start stellt um.
@@ -395,14 +395,16 @@ int main(void) {
     prefs_set_fx(false);                            // Fach 4
     plan_set_taken(0, true);                        // Faecher 3 und 8
     const Aufschub d3 = { .minute = 480, .tag = plan_today(), .plaetze = 0x02 };
+    remind_geklopft(480);                           // Fach 12: die Runde klopfte
     remind_snooze(&d3);                             // Faecher 5, 6, 7, 10, 11
     stub_jetzt += SC_SNOOZE_MIN * 60;               // er klopft, die App plant neu
+    remind_geklopft(2000 + 480);
     remind_schedule();
     remind_snooze(&d3);                             // zweiter Aufschub
     bool nur = attrappe_persist_daneben() == 0, alle = true, eine_laenge = true;
     char welche[64] = "";
     for (int k = 0; k < attrappe_persist_faecher(); k++) {
-      const bool soll = k >= 1 && k <= 11;
+      const bool soll = k >= 1 && k <= 12;
       if (attrappe_persist_geschrieben((uint32_t)k) && !soll) {
         nur = false;
         snprintf(welche + strlen(welche), sizeof(welche) - strlen(welche), " %d", k);
@@ -411,7 +413,7 @@ int main(void) {
       if (attrappe_persist_laenge_wechselte((uint32_t)k)) eine_laenge = false;
     }
     if (!nur) printf("           auch geschrieben:%s\n", welche);
-    pruefe("nur die Faecher 1 bis 11 sind belegt", nur);
+    pruefe("nur die Faecher 1 bis 12 sind belegt", nur);
     pruefe("der Lauf schrieb jedes davon", alle);
     pruefe("jedes Fach mit nur einer Laenge", eine_laenge);
     // Jeder liest nach einem Neustart, was er geschrieben hat - teilten sich

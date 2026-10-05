@@ -3,7 +3,14 @@
 #include "plan.h"
 
 #define MAX_WAKEUPS 8
-#define LEAD_S      30    // Wakeups muessen etwas in der Zukunft liegen
+// Wakeups muessen in der Zukunft liegen (pebbleos lehnt time_difference <= 0
+// ab). Zwei Sekunden reichen fuer die Zeit zwischen time() und dem Stellen.
+// Bis sc-r2 waren es 30: jedes Neustellen in den 30 s vor einem Wecker schob
+// ihn um bis zu 31 s, wiederholt bei jedem weiteren Neustellen.
+#define LEAD_S      2
+// So lange nach seiner Zeit wird ein Wecker, der noch nicht geklopft hat,
+// sofort neu gestellt - siehe prv_noch_nicht_geklopft.
+#define NACHHOLEN_S 60
 // Ein Aufschub traegt die Uhrzeit seiner Runde im Cookie, um COOKIE_SNOOZE
 // verschoben - ausserhalb des Minutenbereichs 0..1439, damit ihn nichts
 // mit einem gewoehnlichen Wecker verwechselt.
@@ -15,7 +22,7 @@
 // gestartet, und beim Start werden alle Wecker neu gestellt. Ohne Persist
 // fiele der Aufschub beim ersten Start dazwischen weg - genau das war der
 // Fehler, mit dem ein "spaeter" am Morgen manchmal nie wiederkam.
-// plan.c belegt 1..3, 8 und 9, prefs.c 4, remind.c 5..7, 10 und 11.
+// plan.c belegt 1..3, 8 und 9, prefs.c 4, remind.c 5..7 und 10..12.
 #define PERSIST_SNOOZE_AT     5
 #define PERSIST_SNOOZE_MINUTE 6
 #define PERSIST_SNOOZE_COUNT  7
@@ -29,6 +36,10 @@
 // dem Heute-Schirm abgehakt wurde. Bis Mitternacht schrumpft sie mit jedem
 // Haken (remind_schedule), danach steht sie fest.
 #define PERSIST_SNOOZE_PLAETZE 11
+// Bis wohin die Runden geklopft haben: die Zeit der letzten Runde, deren
+// Wecker klopfte (hoechstens die Zeit des Klopfens). Siehe
+// prv_noch_nicht_geklopft.
+#define PERSIST_GEKLOPFT 12
 
 static time_t prv_snooze_at(void) {
   return persist_exists(PERSIST_SNOOZE_AT) ? (time_t)persist_read_int(PERSIST_SNOOZE_AT) : 0;
@@ -142,6 +153,18 @@ static time_t prv_fruehestens(time_t t, time_t now) {
   return t > now + LEAD_S ? t : now + LEAD_S + 1;
 }
 
+// HAT DIE RUNDE UM `at` SCHON GEKLOPFT? Nicht aus der Uhrzeit zu schliessen:
+// ein Wecker, den das Neustellen kurz vor seiner Zeit ein paar Sekunden nach
+// hinten schob, ist bei "at <= now" noch nicht dagewesen. Bis sc-r2 fiel er
+// dann beim naechsten Neustellen weg - ein Haken auf dem Heute-Schirm um
+// 08:00:05, und die Runde 08:00 klopfte heute nicht mehr. Nachgeholt wird nur
+// bis NACHHOLEN_S nach ihrer Zeit; was die Uhr laenger verpasste (aus), meldet
+// sie selbst.
+static bool prv_noch_nicht_geklopft(time_t at, time_t now) {
+  const time_t geklopft = persist_exists(PERSIST_GEKLOPFT) ? (time_t)persist_read_int(PERSIST_GEKLOPFT) : 0;
+  return at > geklopft && at > now - NACHHOLEN_S;
+}
+
 // Wakeups brauchen eine Minute Abstand zueinander. Zwei Praeparate zur selben
 // Uhrzeit ergeben aber nur EINEN Wecker - das Erinnerungsfenster zeigt dann
 // beide. Bei E_RANGE trotzdem bis zu zweimal um je zwei Minuten nach hinten
@@ -243,7 +266,10 @@ void remind_schedule(void) {
     // (plan.c). Ob die Runde von gestern noch offen ist, steht deshalb schon
     // vor Mitternacht fest - siehe den ersten Zweig und prv_aufschub_offen.
     const bool offen = prv_aufschub_offen(runde, snooze_minute);
-    const bool gilt = snooze_at > now && offen && (runde == heute || gestern) &&
+    // Sein Wecker steht im Persist, bis er geklopft hat (remind_geklopft) -
+    // nicht, bis seine Zeit vorbei ist (siehe prv_noch_nicht_geklopft).
+    const bool verpasst = snooze_at > 0 && snooze_at <= now - NACHHOLEN_S;
+    const bool gilt = snooze_at > 0 && !verpasst && offen && (runde == heute || gestern) &&
         (klopft == runde || klopft == runde + 1);
     if (runde == heute && !offen) {
       // HEUTE ERLEDIGT (etwa auf dem Heute-Schirm): der ganze Aufschub ist
@@ -258,12 +284,12 @@ void remind_schedule(void) {
         n++;
         erste = wann;
       }
-    } else if (snooze_at > 0 && snooze_at <= now) {
-      // Verstrichen: meist hat er eben geklopft, sonst verpasste ihn die Uhr
-      // (aus, Wecker verworfen). Vorbei ist nur der WECKER. Den Zaehler
-      // loeschen erst Abhaken und Wegdruecken - bis 0.15.0 fiel er hier mit
-      // weg, und jeder Aufschub war wieder der erste: "hoechstens dreimal"
-      // griff nie.
+    } else if (verpasst) {
+      // Die Uhr verpasste ihn (aus, Wecker verworfen) und meldet das selbst.
+      // Vorbei ist nur der WECKER. Den Zaehler loeschen erst Abhaken und
+      // Wegdruecken - bis 0.15.0 fiel er mit weg, und jeder Aufschub war
+      // wieder der erste: "hoechstens dreimal" griff nie.
+      APP_LOG(APP_LOG_LEVEL_INFO, "Aufschub der Minute %d verpasst", snooze_minute);
       persist_delete(PERSIST_SNOOZE_AT);
     }
   }
@@ -317,7 +343,8 @@ void remind_schedule(void) {
       if (!prv_noch_offen(the_day, best, day == 0)) continue;
 
       const time_t at = kalender_zeit_am(the_day, best);
-      if (at <= now) continue;     // heute schon vorbei
+      // Heute schon vorbei - ausser sie hat noch nicht geklopft.
+      if (at <= now && !prv_noch_nicht_geklopft(at, now)) continue;
       gefunden++;
       const time_t wann = prv_fruehestens(at, now);
       if (prv_schedule(wann, best, true)) {
@@ -366,6 +393,26 @@ bool remind_cookie_neuplanen(int32_t cookie) {
 
 bool remind_cookie_aufschub(int32_t cookie) {
   return cookie >= COOKIE_SNOOZE && cookie < COOKIE_SNOOZE + 1440;
+}
+
+void remind_geklopft(int32_t cookie) {
+  const int minute = remind_cookie_minute(cookie);
+  if (minute < 0) return;
+  if (remind_cookie_aufschub(cookie)) {
+    // Sein Wecker ist vorbei; Zaehler und Plaetze bleiben fuer das Fenster.
+    if (prv_snooze_minute() == minute) {
+      persist_delete(PERSIST_SNOOZE_AT);
+    } else {
+      APP_LOG(APP_LOG_LEVEL_WARNING, "Aufschub %d klopfte, gemerkt ist %d", minute, prv_snooze_minute());
+    }
+    return;
+  }
+  // Die Zeit der Runde, aber nicht spaeter als jetzt: nach einer Reise nach
+  // Westen klopft der Wecker vor ihr, und Runden dazwischen klopften nicht.
+  const time_t jetzt = time(NULL);
+  time_t runde = kalender_zeit_am(plan_today(), minute);
+  if (runde > jetzt) runde = jetzt;
+  persist_write_int(PERSIST_GEKLOPFT, (int)runde);
 }
 
 bool remind_launch_cookie(int32_t *cookie) {

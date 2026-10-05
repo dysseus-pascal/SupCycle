@@ -453,10 +453,16 @@ stellt, fiel er weg, sobald irgendein anderer Wecker die App dazwischen
 08:00 kam nie wieder. Es gibt einen Aufschub, nicht mehrere: ein „später" zu
 einer anderen Runde ersetzt ihn.
 
-**Kurz davor geöffnet, klopft er trotzdem.** Jeder Start stellt alle Wecker
-neu. Lag der Aufschub (oder eine Runde) weniger als 30 s voraus, fiel er bis
-0.15.0 dabei weg — die App um 08:14:45 geöffnet, und der Aufschub von 08:15
-kam nie. Jetzt klopft er höchstens 31 s nach dem Öffnen.
+**Kurz davor geöffnet, klopft er trotzdem.** Jeder Start und jeder Haken
+stellt alle Wecker neu. Lag der Aufschub (oder eine Runde) weniger als 30 s
+voraus, fiel er bis 0.15.0 dabei weg — die App um 08:14:45 geöffnet, und der
+Aufschub von 08:15 kam nie. sc-r schob ihn stattdessen auf „jetzt + 31 s"; ein
+Haken in diesen 31 s hielt ihn dann für schon geklopft, und er war doch weg.
+Jetzt merkt sich die App, welcher Wecker geklopft hat (Persist-Fach 12, beim
+Aufschub Fach 5), statt es aus der Uhrzeit zu schliessen: Was noch nicht da
+war, wird bis eine Minute nach seiner Zeit sofort neu gestellt. Und ein
+Wecker, der noch in der Zukunft liegt, bleibt auf seiner Zeit — nur in den
+letzten 2 s davor rückt er auf 3 s nach dem Neustellen.
 
 **Über Mitternacht bleibt es die Runde des Vortags.** 23:50 aufgeschoben
 klopft um 00:05, zählt weiter und zeigt, was von ihr noch offen ist. Bis
@@ -675,9 +681,9 @@ Telefon steht „aus“). Umgekehrt ersetzte ein
 Umschalten der Animation die sechs Zeiten durch eine Zahl. Jetzt holt die Uhr
 einen Zeitenblock aus Fach 4 einmal nach Fach 8 und räumt Fach 4; die
 Animation gilt dabei als an, bis man sie wieder umstellt. Belegt sind: 1 bis 3,
-8 und 9 `plan.c`, 4 `prefs.c`, 5 bis 7, 10 und 11 `remind.c`. `plan_host_test`
+8 und 9 `plan.c`, 4 `prefs.c`, 5 bis 7 und 10 bis 12 `remind.c`. `plan_host_test`
 prüft nach einem Lauf mit Umstellung, Haken, Animation und Aufschub, dass nur
-diese elf Fächer beschrieben sind, jedes mit einer Länge, und dass nach einem
+diese zwölf Fächer beschrieben sind, jedes mit einer Länge, und dass nach einem
 Neustart jede Datei ihren eigenen Wert liest.
 
 ## Health Connect (über Boulder)

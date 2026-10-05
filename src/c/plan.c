@@ -9,7 +9,7 @@
 // Animation las die erste Hakenzeit als Schalter (kein Haken auf Platz 1 =
 // Animation aus, schon gleich nach der Installation, und die Uhr meldete das
 // dem Telefon - im Emulator nachgestellt), und ein Umschalten der
-// Animation ersetzte die sechs Zeiten durch eine Zahl. 5 bis 7, 10 und 11 belegt
+// Animation ersetzte die sechs Zeiten durch eine Zahl. 5 bis 7 und 10 bis 12 belegt
 // remind.c. Was 0.14.0 in Fach 4 schrieb (24 Byte), holt plan_init herueber.
 // tools/plan_host_test.c prueft die Belegung aller Faecher.
 #define PERSIST_TAKEN_AT 8

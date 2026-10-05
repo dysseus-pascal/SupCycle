@@ -72,6 +72,13 @@ bool remind_cookie_aufschub(int32_t cookie);
 // Hat ein Wecker die App gestartet? Dann true und sein Cookie in `cookie`.
 bool remind_launch_cookie(int32_t *cookie);
 
+// Der Wecker mit diesem Cookie hat geklopft - beim Start durch ihn und bei
+// offener App, vor remind_schedule zu rufen. Ob ein Wecker schon da war,
+// merkt sich remind.c, statt es aus der Uhrzeit zu schliessen: das
+// Neustellen kurz vor seiner Zeit schiebt ihn ein paar Sekunden, und ein
+// weiteres Neustellen dazwischen liess ihn bis sc-r2 ganz wegfallen.
+void remind_geklopft(int32_t cookie);
+
 // --- Der Aufschub ---
 //
 // EIN AUFSCHUB GEHOERT ZU EINER RUNDE. "Spaeter" zur Morgenrunde heisst: in

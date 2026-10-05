@@ -21,7 +21,9 @@
 //   - HOECHSTENS DREI AUFSCHUEBE. Bis 0.15.0 loeschte das Neustellen nach
 //     dem Klopfen des Aufschubs den Zaehler mit - jeder war wieder der erste.
 //   - KURZ DAVOR NEU GESTELLT. Lag ein Wecker weniger als 30 s voraus, fiel
-//     er bis 0.15.0 beim Neustellen weg (App um 08:14:45 geoeffnet).
+//     er bis 0.15.0 beim Neustellen weg (App um 08:14:45 geoeffnet); sc-r
+//     schob ihn um bis zu 31 s und verlor ihn beim naechsten Neustellen.
+//     Ob er geklopft hat, sagt remind_geklopft, nicht die Uhrzeit.
 //   - UEBER MITTERNACHT. Der Aufschub von 23:50 klopft um 00:05 und gilt der
 //     Runde von gestern; bis 0.15.0 klopfte er nie.
 //   - EINE ANDERE RUNDE laesst den Aufschub stehen.
@@ -322,6 +324,7 @@ static void abschnitt_neuplanen_selten(void) {
   frisch(ortszeit(J, M, T, 8, 0));
   Platz pause[] = { { "Maca", 8, 0, 1, 1, 52, heute - 6 } };   // heute der letzte Einnahmetag
   plan_setzen(pause, 1);
+  remind_geklopft(480);          // der Wecker 08:00 hat die App gestartet
   aufschieben(480, heute);
   pruefe("Pause ab morgen, aber ein Aufschub laeuft: kein Wecker zum Neuplanen",
          aufschub_wecker_um(480) && neuplanen() == NULL);
@@ -415,6 +418,7 @@ static void abschnitt_aufschub_zaehlt(void) {
     pruefe(was, a && a->zeit == stub_jetzt + SC_SNOOZE_MIN * 60);
     if (!a) return;
     stub_jetzt = a->zeit;         // er klopft ...
+    remind_geklopft(COOKIE_AUFSCHUB + 480);
     remind_schedule();            // ... und die App stellt neu
     snprintf(was, sizeof(was), "nach dem Klopfen zaehlt er %d", k);
     pruefe(was, remind_snooze_count(480, heute) == k);
@@ -425,6 +429,7 @@ static void abschnitt_aufschub_zaehlt(void) {
 
   // Morgen ist die Runde 08:00 ein neuer Anlass.
   stub_jetzt = ortszeit(2026, 7, 15, 8, 0);
+  remind_geklopft(480);
   remind_schedule();
   pruefe("morgen faengt die Runde 08:00 bei null an",
          remind_runden_tag(480) == heute + 1 && remind_snooze_count(480, heute + 1) == 0 &&
@@ -463,7 +468,7 @@ static bool wecker_um(int32_t cookie, int j, int mo, int t, int h, int mi) {
 }
 
 static void abschnitt_kurz_davor(void) {
-  printf("\nWeniger als 30 s vor dem Wecker neu gestellt\n");
+  printf("\nKurz vor dem Wecker neu gestellt\n");
   const int J = 2026, M = 7, T = 14;
   const int32_t heute = datum_tag(J, M, T);
   Platz zwei[] = { { "A", 8, 0, 1, 0, 0, heute }, { "B", 12, 30, 1, 0, 0, heute } };
@@ -482,8 +487,10 @@ static void abschnitt_kurz_davor(void) {
     char was[96];
     snprintf(was, sizeof(was), "%d s vor dem Aufschub neu gestellt: er steht noch", sekunden_davor[k]);
     pruefe(was, a != NULL);
-    pruefe("  nicht frueher, und hoechstens 31 s nach dem Neustellen",
-           a && a->zeit >= soll && a->zeit <= stub_jetzt + 31);
+    // Bis sc-r2 schob ihn jedes Neustellen in den 30 s davor auf "jetzt +
+    // 31 s". Die Uhr nimmt jeden Wecker, der in der Zukunft liegt.
+    pruefe("  zu seiner Zeit, hoechstens 3 s spaeter",
+           a && a->zeit >= soll && a->zeit <= soll + 3);
     pruefe("  und zaehlt weiter als derselbe", remind_snooze_count(480, heute) == 1);
   }
   // Klopft er gerade (Start durch ihn), steht er nicht nochmal.
@@ -491,6 +498,7 @@ static void abschnitt_kurz_davor(void) {
   plan_setzen(zwei, 2);
   aufschieben(480, heute);
   stub_jetzt += SC_SNOOZE_MIN * 60;
+  remind_geklopft(COOKIE_AUFSCHUB + 480);
   remind_schedule();
   pruefe("beim Klopfen selbst: kein zweiter", aufschub_wecker(480) == NULL);
 
@@ -500,9 +508,104 @@ static void abschnitt_kurz_davor(void) {
   remind_schedule();
   pruefe("um 07:59:45 neu gestellt: die Runde 08:00 klopft heute noch", wecker_um(480, J, M, T, 8, 0));
   stub_jetzt = ortszeit(J, M, T, 8, 0);
+  remind_geklopft(480);
   remind_schedule();
   pruefe("um 08:00:00 (sie klopft gerade) nicht nochmal heute", !wecker_um(480, J, M, T, 8, 0) &&
          wecker_um(480, J, M, T + 1, 8, 0));
+}
+
+// Der erste Wecker mit diesem Cookie, oder NULL.
+static const AttrappeWecker *wecker_mit(int32_t cookie) {
+  for (int i = 0; i < attrappe_wecker_zahl(); i++) {
+    if (attrappe_wecker(i)->cookie == cookie) return attrappe_wecker(i);
+  }
+  return NULL;
+}
+
+// Neu gestellt in den Sekunden um einen Wecker, bevor er klopfte: er bleibt
+// und wandert jedes Mal hoechstens ein paar Sekunden. Bis sc-r2 schloss
+// remind_schedule aus "Zeit vorbei" auf "hat geklopft": um 08:14:45
+// geoeffnet stand der Aufschub auf 08:15:16, ein Haken um 08:15:05 - und er
+// war weg. Ebenso eine Runde.
+static void abschnitt_dazwischen(void) {
+  printf("\nNeu gestellt, bevor der Wecker klopfte\n");
+  const int J = 2026, M = 7, T = 14;
+  const int32_t heute = datum_tag(J, M, T);
+  Platz zwei[] = { { "A", 8, 0, 1, 0, 0, heute }, { "B", 12, 30, 1, 0, 0, heute } };
+  char was[96];
+
+  frisch(ortszeit(J, M, T, 8, 0));
+  plan_setzen(zwei, 2);
+  aufschieben(480, heute);
+  const time_t soll = stub_jetzt + SC_SNOOZE_MIN * 60;
+  const int um[] = { -15, -1, 1, 2, 4, 30 };   // Sekunden zu seiner Zeit
+  const AttrappeWecker *a = NULL;
+  for (unsigned k = 0; k < sizeof(um) / sizeof(um[0]); k++) {
+    stub_jetzt = soll + um[k];
+    remind_schedule();
+    a = aufschub_wecker(480);
+    snprintf(was, sizeof(was), "Aufschub, %+d s zu seiner Zeit neu gestellt: er steht, frueh genug", um[k]);
+    pruefe(was, a && a->zeit >= soll && a->zeit > stub_jetzt && a->zeit <= (soll > stub_jetzt ? soll : stub_jetzt) + 3);
+  }
+  if (!a) return;
+  stub_jetzt = a->zeit;
+  remind_geklopft(a->cookie);
+  remind_schedule();
+  pruefe("  geklopft: kein Aufschub-Wecker mehr, der Zaehler bleibt",
+         aufschub_wecker(480) == NULL && remind_snooze_count(480, heute) == 1);
+  // Die Uhr war aus: eine Minute nach seiner Zeit gilt er als verpasst.
+  frisch(ortszeit(J, M, T, 8, 0));
+  plan_setzen(zwei, 2);
+  aufschieben(480, heute);
+  stub_jetzt = soll + 60;
+  remind_schedule();
+  pruefe("Aufschub 60 s nach seiner Zeit, nie geklopft: verpasst",
+         aufschub_wecker(480) == NULL && !persist_exists(FACH_AUFSCHUB_ZEIT) && remind_snooze_count(480, heute) == 1);
+  pruefe("  das steht im Log", strstr(attrappe_log_text, "Aufschub der Minute 480 verpasst") != NULL);
+
+  // Eine Runde. Gestern hat 08:00 geklopft, heute wird um 07:59:59 und um
+  // 08:00:01 neu gestellt (zwei Haken auf dem Heute-Schirm).
+  frisch(ortszeit(J, M, T - 1, 8, 0));
+  plan_setzen(zwei, 2);
+  remind_geklopft(480);
+  const time_t acht = ortszeit(J, M, T, 8, 0);
+  const int runde_um[] = { -1, 1, 3 };
+  const AttrappeWecker *r = NULL;
+  for (unsigned k = 0; k < sizeof(runde_um) / sizeof(runde_um[0]); k++) {
+    stub_jetzt = acht + runde_um[k];
+    remind_schedule();
+    r = wecker_mit(480);
+    snprintf(was, sizeof(was), "Runde 08:00, %+d s neu gestellt: sie steht heute, frueh genug", runde_um[k]);
+    pruefe(was, r && r->zeit >= acht && r->zeit > stub_jetzt && r->zeit <= (acht > stub_jetzt ? acht : stub_jetzt) + 3);
+  }
+  if (!r) return;
+  stub_jetzt = r->zeit;
+  remind_geklopft(480);
+  remind_schedule();
+  r = wecker_mit(480);
+  pruefe("  geklopft: heute nicht nochmal, morgen 08:00", r && ist_um(r->zeit, J, M, T + 1, 8, 0));
+  // Laenger als eine Minute vorbei und nie geklopft (Uhr aus): nicht nachholen.
+  frisch(ortszeit(J, M, T - 1, 8, 0));
+  plan_setzen(zwei, 2);
+  remind_geklopft(480);
+  stub_jetzt = acht + 60;
+  remind_schedule();
+  r = wecker_mit(480);
+  pruefe("Runde 08:00, 60 s vorbei, nie geklopft: nicht nachgeholt", r && ist_um(r->zeit, J, M, T + 1, 8, 0));
+  // Nach einer Reise nach Westen klopft 08:00 schon um 02:00. Die Runde
+  // 05:00 dazwischen hat damit nicht geklopft: um 04:59:59 und 05:00:01 neu
+  // gestellt, steht sie noch.
+  frisch(ortszeit(J, M, T, 2, 0));
+  Platz frueh[] = { { "A", 8, 0, 1, 0, 0, heute }, { "C", 5, 0, 1, 0, 0, heute } };
+  plan_setzen(frueh, 2);
+  remind_geklopft(480);
+  stub_jetzt = ortszeit(J, M, T, 5, 0) - 1;
+  remind_schedule();
+  stub_jetzt = ortszeit(J, M, T, 5, 0) + 1;
+  remind_schedule();
+  r = wecker_mit(300);
+  pruefe("08:00 klopfte um 02:00: die Runde 05:00 gilt nicht als geklopft",
+         r && r->zeit > stub_jetzt && r->zeit <= stub_jetzt + 3);
 }
 
 // Runde 23:50 am Datum j-mo-t, aufgeschoben ueber Mitternacht.
@@ -519,6 +622,7 @@ static void mitternacht(int J, int M, int T) {
   if (!a) { zeige(was); return; }
   for (int k = 1; k <= SC_SNOOZE_MAX; k++) {
     stub_jetzt = a->zeit;         // er klopft ...
+    remind_geklopft(COOKIE_AUFSCHUB + 1430);
     remind_schedule();            // ... und die App stellt neu
     snprintf(was, sizeof(was), "  nach Mitternacht die Runde von gestern, Aufschub %d", k);
     pruefe(was, remind_runden_tag(COOKIE_AUFSCHUB + 1430) == heute && remind_snooze_count(1430, heute) == k);
@@ -645,6 +749,7 @@ int main(void) {
   abschnitt_aufschub();
   abschnitt_aufschub_zaehlt();
   abschnitt_kurz_davor();
+  abschnitt_dazwischen();
   abschnitt_mitternacht();
   abschnitt_erledigt();
   abschnitt_vortag();

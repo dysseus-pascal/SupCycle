@@ -44,6 +44,7 @@ static void prv_plan_changed(void) {
 static void prv_wakeup(WakeupId id, int32_t cookie) {
   const int minute = remind_cookie_minute(cookie);
   APP_LOG(APP_LOG_LEVEL_INFO, "Wecker bei offener App (Cookie %d)", (int)cookie);
+  remind_geklopft(cookie);
   // Steht schon eine Erinnerung, kommt die Runde dort dazu und es vibriert
   // neu; nichts offen heisst nichts zu zeigen. Die App bleibt in beiden
   // Faellen offen - man benutzt sie gerade.
@@ -85,6 +86,7 @@ static void prv_init(void) {
   // Hat uns ein Wecker geoeffnet, sofort erinnern. Das Fenster legt sich ueber
   // den Hauptschirm; bei einem Aufschub gilt es der aufgeschobenen Runde.
   const int minute = geweckt ? remind_cookie_minute(cookie) : -1;
+  if (geweckt) remind_geklopft(cookie);
   if (minute != -1) {
     APP_LOG(APP_LOG_LEVEL_INFO, "Vom Wecker geoeffnet (Minute %d)", minute);
     if (!reminder_window_push(cookie)) {
