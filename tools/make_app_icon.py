@@ -8,10 +8,11 @@ Dieselbe Form wie src/c/pill_fx.c, nur ohne Gesicht: bei 25 Punkten waeren
 Augen und Mund drei Flecken, die alles verschmieren. Was Pilly bei dieser
 Groesse erkennbar macht, ist die geteilte Kapsel, nicht die Miene.
 
-MASSSTAB IST DAS SYSTEMSYMBOL. Die Uhr-Kachel von "Watchfaces" im Starter wurde
-Punkt fuer Punkt nachgemessen: 24 von 25 Punkten hoch, Linien 2 bis 3 Punkte
-stark, rund 180 schwarze Punkte. Danach richten sich Groesse und Strichstaerke
-hier - eine duennere Linie sieht daneben aus wie ein Versehen.
+MASSSTAB SIND PEBBLES SYMBOLE IM STARTER. Settings, Alarms, Weather, Music und
+die anderen sind Vektoren auf 25 Punkten mit 2 Punkte starker Linie
+(Pebble_25x25_*.svg in PebbleOS, im Starter von QEMU nachgesehen). Die Kapsel
+nimmt dieselbe Strichstaerke: mit 3 Punkten stach sie auf der Uhr als einziges
+Symbol fett heraus.
 
 NUR LINIEN, KEINE FLAECHE, und keine ~bw-Fassung. Der Starter zeichnet Symbole
 einfarbig: eine farbige Flaeche kam dort als grauer Fleck heraus (im Emulator
@@ -31,8 +32,7 @@ Strichzeichnung taete die nichts. Auf der Kachel darf die Teilungslinie
 endlich rot sein - auf der Uhr waere sie ein grauer Fleck.
 
 DIE FORM STEHT NUR EINMAL DA. Alle Masse gelten auf einem Raster von 25
-Punkten und werden mit s hochgerechnet; mit s = 1 kommt Punkt fuer Punkt das
-alte Bild heraus.
+Punkten und werden mit s hochgerechnet; mit s = 1 kommt das Uhr-Symbol heraus.
 """
 import os
 import struct
@@ -41,11 +41,7 @@ import zlib
 
 RASTER = 25                      # Bezugsraster, auf dem alle Masse gelten
 SS = 4                           # Ueberabtastung je Achse
-# Drei statt zwei: die Kapsel ist mit 14 Punkten nur halb so breit wie die
-# Systemuhr, ihr Umriss ist also entsprechend kuerzer. Mit zwei Punkten Linie
-# kam sie auf 128 schwarze Punkte gegen 180 beim Vorbild und wirkte daneben
-# blass. Das Vorbild selbst hat 2 bis 3 - drei bleibt im Rahmen.
-LINE = 3                         # Strichstaerke in Punkten
+LINE = 2                         # Strichstaerke in Punkten, wie bei Pebble
 
 CX, CY = 12.0, 12.0              # Mitte
 HW = 7.0                         # halbe Breite
@@ -178,7 +174,7 @@ def schreibe_uhr(dest):
         print("system_icon~bw.png entfernt - die Linie gilt fuer alle Uhren")
     punkte = sum(1 for y in range(n) for x in range(n) if kontur[y][x] or teilung[y][x])
     ys = [y for y in range(n) if any(kontur[y][x] or teilung[y][x] for x in range(n))]
-    print("system_icon.png: %d Punkte schwarz, %d hoch (Vorbild: 180 / 24)"
+    print("system_icon.png: %d Punkte schwarz, %d hoch"
           % (punkte, (ys[-1] - ys[0] + 1) if ys else 0))
 
 

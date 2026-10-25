@@ -731,8 +731,9 @@ python3 tools/make_app_icon.py --store store
 
 Sie entstehen aus **derselben Formbeschreibung** wie das 25×25 der Uhr — alle
 Masse gelten auf einem Raster von 25 Punkten und werden hochgerechnet. Ohne
-`--store` erzeugt dasselbe Werkzeug weiterhin Punkt für Punkt das alte
-`system_icon.png`; dass es das wirklich tut, ist byteweise nachgeprüft.
+`--store` erzeugt dasselbe Werkzeug das `system_icon.png` der Uhr, mit 2 Punkte
+starker Linie wie Pebbles eigene Symbole im Starter (seit 0.16.1; vorher 3,
+und die Kapsel stach daneben fett heraus).
 
 ## Sprachen
 
